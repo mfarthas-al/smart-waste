@@ -1,0 +1,10 @@
+{
+  "region": "LK",
+  "timezone": "Asia/Colombo",
+  "units": { "distance": "km", "weight": "kg" },
+  "operations": {
+    "default_depot": { "lat": 6.927, "lon": 79.861 },
+    "route_threshold": 0.4,
+    "truck_capacity_kg": 3000
+  }
+}
