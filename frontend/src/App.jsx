@@ -1,11 +1,15 @@
-import { Link, NavLink, Routes, Route } from 'react-router-dom'
-import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme } from '@mui/material'
-import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
+import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Button } from '@mui/material'
+import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle } from 'lucide-react'
 import './App.css'
 import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
 import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
+import LoginPage from './pages/Auth/LoginPage.jsx'
+import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
+import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 
-const navLinks = [
+const baseNavLinks = [
   { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
   { to: '/collector', label: 'Collector', description: 'Daily stop checklist', icon: ClipboardCheck },
   { to: '/schedule', label: 'Schedule', description: 'Pickup calendar', icon: CalendarClock },
@@ -13,11 +17,28 @@ const navLinks = [
   { to: '/analytics', label: 'Analytics', description: 'Performance dashboards', icon: BarChart3 },
 ]
 
-function Nav() {
+function Nav({ session, onSignOut }) {
+  const navLinks = [...baseNavLinks]
+  if (session?.role === 'admin') {
+    navLinks.push({
+      to: '/adminDashboard',
+      label: 'Admin Desk',
+      description: 'Administration controls',
+      icon: ShieldCheck,
+    })
+  } else if (session?.role === 'regular') {
+    navLinks.push({
+      to: '/userDashboard',
+      label: 'Crew Desk',
+      description: 'Your field assignments',
+      icon: UserCircle,
+    })
+  }
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-800/60 bg-slate-950/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4 text-slate-100">
-        <div className="flex items-center gap-3">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4 text-slate-100">
+        <div className="flex flex-1 min-w-[16rem] items-center gap-3">
           <Link to="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-500/15 text-brand-200">SW</span>
             Smart Waste LK
@@ -30,26 +51,65 @@ function Nav() {
             sx={{ borderRadius: '999px', fontWeight: 600, letterSpacing: '0.02em' }}
           />
         </div>
-        <nav className="flex flex-wrap items-center gap-2 text-sm font-medium">
-          {navLinks.map(link => (
-            <Tooltip key={link.to} title={link.description} placement="bottom" arrow enterDelay={150}>
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-4">
+          <nav className="flex flex-wrap items-center gap-2 text-sm font-medium">
+            {navLinks.map(link => (
+              <Tooltip key={link.to} title={link.description} placement="bottom" arrow enterDelay={150}>
+                <NavLink
+                  to={link.to}
+                  className={({ isActive }) => `group relative flex items-center gap-2 rounded-full px-4 py-2 transition ${
+                    isActive ? 'bg-brand-500/25 text-brand-100 shadow-inner' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <link.icon className="h-4 w-4" />
+                      <span>{link.label}</span>
+                      {isActive && <span className="h-2 w-2 rounded-full bg-brand-200" />}
+                    </>
+                  )}
+                </NavLink>
+              </Tooltip>
+            ))}
+          </nav>
+
+          <div className="flex items-center gap-3">
+            {session ? (
+              <>
+                <div className="hidden text-right sm:block">
+                  <p className="text-sm font-semibold text-slate-100">{session.name}</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-400">{session.role}</p>
+                </div>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={onSignOut}
+                  sx={{
+                    borderRadius: '999px',
+                    borderColor: 'rgba(148, 163, 184, 0.3)',
+                    color: '#e2e8f0',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    '&:hover': {
+                      borderColor: 'rgba(148, 163, 184, 0.6)',
+                      backgroundColor: 'rgba(15, 23, 42, 0.4)',
+                    },
+                  }}
+                >
+                  Sign out
+                </Button>
+              </>
+            ) : (
               <NavLink
-                to={link.to}
-                className={({ isActive }) => `group relative flex items-center gap-2 rounded-full px-4 py-2 transition ${
-                  isActive ? 'bg-brand-500/25 text-brand-100 shadow-inner' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                }`}
+                to="/login"
+                className="group inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-slate-200 transition hover:border-brand-300 hover:text-brand-200"
               >
-                {({ isActive }) => (
-                  <>
-                    <link.icon className="h-4 w-4" />
-                    <span>{link.label}</span>
-                    {isActive && <span className="h-2 w-2 rounded-full bg-brand-200" />}
-                  </>
-                )}
+                <LogIn className="h-4 w-4" />
+                Sign in
               </NavLink>
-            </Tooltip>
-          ))}
-        </nav>
+            )}
+          </div>
+        </div>
       </div>
     </header>
   )
@@ -198,13 +258,43 @@ const theme = createTheme({
 });
 
 export default function App() {
+  const [sessionUser, setSessionUser] = useState(() => {
+    if (typeof window === 'undefined') return null
+    const raw = window.localStorage.getItem('sw-user')
+    if (!raw) return null
+    try {
+      return JSON.parse(raw)
+    } catch (error) {
+      console.warn('Failed to parse stored session', error)
+      return null
+    }
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (sessionUser) {
+      window.localStorage.setItem('sw-user', JSON.stringify(sessionUser))
+    } else {
+      window.localStorage.removeItem('sw-user')
+    }
+  }, [sessionUser])
+
+  const handleLoginSuccess = user => {
+    setSessionUser(user)
+  }
+
+  const handleSignOut = () => {
+    setSessionUser(null)
+  }
+
   const currentYear = new Date().getFullYear()
+  const reroutePath = sessionUser?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <div className="min-h-screen bg-brand-radial text-slate-900">
-        <Nav />
+        <Nav session={sessionUser} onSignOut={handleSignOut} />
         <main className="pb-16 pt-6">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -213,6 +303,18 @@ export default function App() {
             <Route path="/schedule" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Schedule module coming soon.</div>} />
             <Route path="/billing" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Billing features are being prepared.</div>} />
             <Route path="/analytics" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Analytics dashboards are in progress.</div>} />
+            <Route
+              path="/login"
+              element={sessionUser ? <Navigate to={reroutePath} replace /> : <LoginPage onLogin={handleLoginSuccess} />}
+            />
+            <Route
+              path="/userDashboard"
+              element={sessionUser ? <UserDashboard /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/adminDashboard"
+              element={sessionUser?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/login" replace />}
+            />
           </Routes>
         </main>
         <footer className="border-t border-slate-200/80 bg-white/70 py-6 text-sm text-slate-500">
