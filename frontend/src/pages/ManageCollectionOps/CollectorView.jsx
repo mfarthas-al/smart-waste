@@ -13,7 +13,11 @@ export default function CollectorView() {
     async function load() {
       try {
         setLoading(true)
+        setBanner(null)
         const response = await fetch('/api/ops/routes/TRUCK-01/today')
+        if (!response.ok) {
+          throw new Error(`Route fetch failed with status ${response.status}`)
+        }
         const payload = await response.json()
         if (!isMounted) return
         setStops(payload?.stops || [])
@@ -31,6 +35,7 @@ export default function CollectorView() {
   async function markCollected(binId) {
     try {
       setPendingBin(binId)
+      setBanner(null)
       const res = await fetch('/api/ops/collections', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -142,15 +147,15 @@ export default function CollectorView() {
               return (
                 <li key={stop.binId} className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                   <div className="flex min-w-[12rem] flex-col">
-                    <span className="text-sm font-semibold text-slate-900">{stop.binId}</span>
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
+                    <span className={`text-sm font-semibold ${isVisited ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{stop.binId}</span>
+                    <span className={`flex items-center gap-1 text-xs ${isVisited ? 'text-slate-400 line-through' : 'text-slate-500'}`}>
                       <MapPin className="h-3.5 w-3.5 text-slate-400" />
                       Lat {stop.lat?.toFixed?.(4)} · Lon {stop.lon?.toFixed?.(4)}
                     </span>
                   </div>
                   <Chip
                     icon={isVisited ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                    label={isVisited ? 'Collected' : 'Pending'}
+                    label={isVisited ? 'Done' : 'Pending'}
                     color={isVisited ? 'success' : 'warning'}
                     variant={isVisited ? 'filled' : 'outlined'}
                     size="small"

@@ -13,36 +13,53 @@ export default function ManageCollectionOpsPage() {
   async function optimize() {
     setLoading(true)
     setError('')
-    const res = await fetch('/api/ops/routes/optimize', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ ward })
-    })
-    if (!res.ok) {
-      setLoading(false)
+    try {
+      const res = await fetch('/api/ops/routes/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ward }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`Optimize failed with status ${res.status}`)
+      }
+
+      const data = await res.json()
+      setPlan(data)
+      setLastOptimizedAt(new Date())
+    } catch (err) {
+      console.error('optimize error', err)
       setError('Could not optimize right now. Please try again in a moment.')
-      return
+    } finally {
+      setLoading(false)
     }
-    const data = await res.json()
-    setPlan(data)
-    setLastOptimizedAt(new Date())
-    setLoading(false)
   }
 
   const loadProgress = plan ? Math.min(100, Math.round(((plan.loadKg ?? 0) / capacityLimit) * 100)) : null
 
   const summary = useMemo(() => {
-    if (!plan) {
-      return [
-        { label: 'Stops scheduled', value: '—', helper: 'Run an optimization to populate' },
-        { label: 'Total load', value: '—', helper: 'Kg of estimated collections' },
-        { label: 'Total distance', value: '—', helper: 'Round trip in kilometers' },
-      ]
-    }
     return [
-      { label: 'Stops scheduled', value: plan.stops?.length ?? 0, helper: 'Bins meeting threshold' },
-      { label: 'Total load', value: `${plan.loadKg ?? 0} kg`, helper: 'Estimated pickup weight', progress: loadProgress ?? 0 },
-      { label: 'Total distance', value: `${plan.distanceKm ?? 0} km`, helper: 'Projected travel distance' },
+      {
+        label: 'Truck assigned',
+        value: plan?.truckId || 'TRUCK-01',
+        helper: plan?.truckId ? 'Active crew for this ward' : 'Default assignment when no plan exists',
+      },
+      {
+        label: 'Stops scheduled',
+        value: plan ? plan.stops?.length ?? 0 : '—',
+        helper: plan ? 'Bins meeting threshold' : 'Run an optimization to populate',
+      },
+      {
+        label: 'Total load',
+        value: plan ? `${plan.loadKg ?? 0} kg` : '—',
+        helper: `Capacity limit ${capacityLimit} kg`,
+        progress: loadProgress ?? undefined,
+      },
+      {
+        label: 'Total distance',
+        value: plan ? `${plan.distanceKm ?? 0} km` : '—',
+        helper: 'Projected round trip travel',
+      },
     ]
   }, [plan, loadProgress])
 
@@ -99,7 +116,7 @@ export default function ManageCollectionOpsPage() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {summary.map(item => (
                 <Tooltip key={item.label} title={item.helper} arrow enterDelay={150}>
                   <Card className="rounded-3xl border border-slate-200/80 bg-slate-50/90 shadow-inner">
@@ -128,7 +145,7 @@ export default function ManageCollectionOpsPage() {
           <Card className="glass-panel rounded-3xl border border-slate-200/70 bg-slate-950/95 text-slate-100 shadow-lg shadow-slate-900/40">
             <CardContent className="space-y-5 p-6">
               <h3 className="text-sm uppercase tracking-wide text-slate-400">Crew briefing</h3>
-              <p className="text-sm text-slate-300">Provide this summary to the TRUCK-01 crew before dispatch. Ensure fuel levels support a {summary[2].value} circuit.</p>
+              <p className="text-sm text-slate-300">Provide this summary to the TRUCK-01 crew before dispatch. Ensure fuel levels support a {plan ? `${plan.distanceKm ?? 0} km` : '—'} circuit.</p>
               <Divider light sx={{ borderColor: 'rgba(148, 163, 184, 0.18)' }} />
               <div className="space-y-4 text-sm">
                 <div className="rounded-2xl bg-slate-900/70 px-4 py-3">
@@ -165,20 +182,25 @@ export default function ManageCollectionOpsPage() {
                   Run an optimization to generate a stop list for today&apos;s shift.
                 </li>
               )}
-              {waypoints.map((stop, index) => (
-                <li key={stop.binId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-700">{index + 1}</span>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{stop.binId}</p>
-                      <p className="text-xs text-slate-500">Lat {stop.lat.toFixed(4)} · Lon {stop.lon.toFixed(4)}</p>
+              {waypoints.map((stop, index) => {
+                const lat = typeof stop.lat === 'number' ? stop.lat.toFixed(4) : '—'
+                const lon = typeof stop.lon === 'number' ? stop.lon.toFixed(4) : '—'
+                const estKg = typeof stop.estKg === 'number' ? stop.estKg : '—'
+                return (
+                  <li key={stop.binId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500/20 text-sm font-semibold text-brand-700">{index + 1}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{stop.binId}</p>
+                        <p className="text-xs text-slate-500">Lat {lat} · Lon {lon}</p>
+                      </div>
+                      <span className="ml-auto inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                        {estKg} kg
+                      </span>
                     </div>
-                    <span className="ml-auto inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                      {stop.estKg} kg
-                    </span>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ol>
           </CardContent>
         </Card>
