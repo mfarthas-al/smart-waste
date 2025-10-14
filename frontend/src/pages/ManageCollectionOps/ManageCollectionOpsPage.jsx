@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Alert, Button, Card, CardContent, Chip, Divider, LinearProgress, Tooltip } from '@mui/material'
 import { Loader2, MapPinned, RefreshCw, Share2, FileDown, ShieldCheck } from 'lucide-react'
+import RouteMap from './RouteMap.jsx';
+const DEPOT = { lat: 6.927, lon: 79.861 }; // same as backend region.lk.json
 
 export default function ManageCollectionOpsPage() {
   const [ward, setWard] = useState('CMC-W05')
@@ -169,6 +171,12 @@ export default function ManageCollectionOpsPage() {
               <h3 className="text-lg font-semibold text-slate-900">Route timeline</h3>
               <span className="text-xs uppercase tracking-wide text-slate-500">{waypoints.length} stops</span>
             </div>
+
+            {plan && (
+                <div className="mt-6">
+                    <RouteMap plan={plan} depot={DEPOT} />
+                </div>
+            )}
 
             <ol className="mt-6 space-y-3">
               {loading && (
