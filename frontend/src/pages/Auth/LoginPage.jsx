@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
-import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography,} from '@mui/material'
+import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material'
 import { ShieldCheck } from 'lucide-react'
 
 export default function LoginPage({ onLogin }) {
@@ -103,6 +103,9 @@ export default function LoginPage({ onLogin }) {
 
                     <Typography variant="caption" color="text.secondary" textAlign="center">
                         Need access? Contact your Smart Waste administrator or <RouterLink to="/" className="text-brand-600 hover:text-brand-500">return home</RouterLink>.
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" textAlign="center">
+                        New to Smart Waste? <RouterLink to="/register" className="text-brand-600 hover:text-brand-500">Create an account</RouterLink>.
                     </Typography>
                 </Stack>
             </Paper>

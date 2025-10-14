@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Button } from '@mui/material'
-import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle } from 'lucide-react'
+import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus } from 'lucide-react'
 import './App.css'
 import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
 import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
 import LoginPage from './pages/Auth/LoginPage.jsx'
+import RegisterPage from './pages/Auth/RegisterPage.jsx'
 import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
 import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 
@@ -43,7 +44,7 @@ function Nav({ session, onSignOut }) {
             <img
               src="/logo.png"
               alt="Smart Waste LK"
-              className="h-9 w-9 rounded-full border border-brand-500/30 bg-white/90 p-1 object-contain shadow-sm"
+              className="h-9 w-9 rounded-full border border-brand-500/30 p-1 object-contain shadow-sm"
             />
             Smart Waste LK
           </Link>
@@ -104,13 +105,22 @@ function Nav({ session, onSignOut }) {
                 </Button>
               </>
             ) : (
-              <NavLink
-                to="/login"
-                className="group inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-slate-200 transition hover:border-brand-300 hover:text-brand-200"
-              >
-                <LogIn className="h-4 w-4" />
-                Sign in
-              </NavLink>
+              <div className="flex items-center gap-2">
+                <NavLink
+                  to="/register"
+                  className="group inline-flex items-center gap-2 rounded-full bg-brand-500/20 px-4 py-2 text-brand-100 transition hover:bg-brand-500/30"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Create account
+                </NavLink>
+                <NavLink
+                  to="/login"
+                  className="group inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-slate-200 transition hover:border-brand-300 hover:text-brand-200"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign in
+                </NavLink>
+              </div>
             )}
           </div>
         </div>
@@ -310,6 +320,10 @@ export default function App() {
             <Route
               path="/login"
               element={sessionUser ? <Navigate to={reroutePath} replace /> : <LoginPage onLogin={handleLoginSuccess} />}
+            />
+            <Route
+              path="/register"
+              element={sessionUser ? <Navigate to={reroutePath} replace /> : <RegisterPage onRegister={handleLoginSuccess} />}
             />
             <Route
               path="/userDashboard"
