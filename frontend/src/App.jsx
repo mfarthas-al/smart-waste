@@ -40,7 +40,11 @@ function Nav({ session, onSignOut }) {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4 text-slate-100">
         <div className="flex flex-1 min-w-[16rem] items-center gap-3">
           <Link to="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-500/15 text-brand-200">SW</span>
+            <img
+              src="/logo.png"
+              alt="Smart Waste LK"
+              className="h-9 w-9 rounded-full border border-brand-500/30 bg-white/90 p-1 object-contain shadow-sm"
+            />
             Smart Waste LK
           </Link>
           <Chip
