@@ -331,6 +331,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
                                         value={form.preferredDateTime}
                                         onChange={handleInputChange}
                                         required
+                                        InputLabelProps={{ shrink: true }}
                                         inputProps={{ min: new Date().toISOString().slice(0, 16) }}
                                         fullWidth
                                     />
