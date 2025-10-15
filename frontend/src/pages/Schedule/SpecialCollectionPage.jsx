@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography,} from '@mui/material'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -17,6 +17,19 @@ const initialForm = {
     preferredDateTime: '',
 }
 
+const toLocalInputValue = date => {
+    const offset = date.getTimezoneOffset()
+    const localDate = new Date(date.getTime() - offset * 60000)
+    return localDate.toISOString().slice(0, 16)
+}
+
+const serializeDateTime = value => {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toISOString()
+}
+
 export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     const navigate = useNavigate()
     const [config, setConfig] = useState(null)
@@ -28,6 +41,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     const [bookingLoading, setBookingLoading] = useState(false)
     const [error, setError] = useState(null)
     const [paymentDialog, setPaymentDialog] = useState({ open: false, slot: null })
+    const minDateTimeRef = useRef(toLocalInputValue(new Date()))
 
     const isAuthenticated = Boolean(session?.id || session?._id || session?.email)
 
@@ -130,6 +144,11 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             return
         }
 
+        if (!form.preferredDateTime) {
+            setError('Please choose a preferred date and time before checking availability.')
+            return
+        }
+
         setAvailabilityLoading(true)
         try {
             const res = await fetch('/api/schedules/special/availability', {
@@ -139,7 +158,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
                     userId: session.id || session._id,
                     itemType: form.itemType,
                     quantity: Number(form.quantity),
-                    preferredDateTime: form.preferredDateTime,
+                    preferredDateTime: serializeDateTime(form.preferredDateTime),
                 }),
             })
             let data = null
@@ -178,7 +197,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             userId: session.id || session._id,
             itemType: form.itemType,
             quantity: Number(form.quantity),
-            preferredDateTime: form.preferredDateTime,
+            preferredDateTime: serializeDateTime(form.preferredDateTime),
             slotId: slot.slotId,
             paymentStatus,
             paymentReference,
@@ -332,7 +351,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
                                         onChange={handleInputChange}
                                         required
                                         InputLabelProps={{ shrink: true }}
-                                        inputProps={{ min: new Date().toISOString().slice(0, 16) }}
+                                        inputProps={{ min: minDateTimeRef.current }}
                                         fullWidth
                                     />
                                 </Grid>
