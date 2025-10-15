@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
-import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Button } from '@mui/material'
-import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus } from 'lucide-react'
+import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Avatar, IconButton, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material'
+import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
 import './App.css'
 import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
 import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
@@ -19,6 +19,7 @@ const baseNavLinks = [
 ]
 
 function Nav({ session, onSignOut }) {
+  const [menuAnchor, setMenuAnchor] = useState(null)
   const navLinks = [...baseNavLinks]
   if (session?.role === 'admin') {
     navLinks.push({
@@ -34,6 +35,24 @@ function Nav({ session, onSignOut }) {
       description: 'Your field assignments',
       icon: UserCircle,
     })
+  }
+
+  const menuOpen = Boolean(menuAnchor)
+  const dashboardPath = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
+  const dashboardLabel = session?.role === 'admin' ? 'Admin dashboard' : 'My dashboard'
+  const userInitial = session?.name?.[0]?.toUpperCase() ?? 'S'
+
+  const handleMenuOpen = event => {
+    setMenuAnchor(event.currentTarget)
+  }
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null)
+  }
+
+  const handleSignOut = () => {
+    handleMenuClose()
+    onSignOut()
   }
 
   return (
@@ -100,50 +119,107 @@ function Nav({ session, onSignOut }) {
           ))}
         </nav>
         <div className="flex items-center gap-3">
+          {session && (
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-semibold text-slate-100">{session.name}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">{session.role}</p>
+            </div>
+          )}
+          <Tooltip title="Account" placement="bottom" arrow>
+            <IconButton
+              onClick={handleMenuOpen}
+              size="small"
+              sx={{
+                borderRadius: '50%',
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                padding: 0,
+              }}
+              aria-controls={menuOpen ? 'account-menu' : undefined}
+              aria-haspopup="true"
+              aria-expanded={menuOpen ? 'true' : undefined}
+            >
+              <Avatar
+                sx={{
+                  width: 36,
+                  height: 36,
+                  bgcolor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#10b981',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                }}
+              >
+                {session ? userInitial : <UserRound className="h-4 w-4" />}
+              </Avatar>
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={menuAnchor}
+            id="account-menu"
+            open={menuOpen}
+            onClose={handleMenuClose}
+            onClick={handleMenuClose}
+            PaperProps={{
+              elevation: 4,
+              sx: {
+                mt: 1.5,
+                minWidth: 200,
+                borderRadius: 3,
+                overflow: 'visible',
+                '&::before': {
+                  content: '""',
+                  display: 'block',
+                  position: 'absolute',
+                  top: 0,
+                  right: 18,
+                  width: 12,
+                  height: 12,
+                  bgcolor: 'background.paper',
+                  transform: 'translateY(-50%) rotate(45deg)',
+                  zIndex: 0,
+                },
+              },
+            }}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          >
             {session ? (
               <>
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-semibold text-slate-100">{session.name}</p>
-                  <p className="text-xs uppercase tracking-wide text-slate-400">{session.role}</p>
-                </div>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={onSignOut}
-                  sx={{
-                    borderRadius: '999px',
-                    borderColor: 'rgba(148, 163, 184, 0.3)',
-                    color: '#e2e8f0',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': {
-                      borderColor: 'rgba(148, 163, 184, 0.6)',
-                      backgroundColor: 'rgba(15, 23, 42, 0.4)',
-                    },
-                  }}
-                >
+                <MenuItem component={NavLink} to={dashboardPath} onClick={handleMenuClose}>
+                  <ListItemIcon>
+                    {session.role === 'admin' ? (
+                      <ShieldCheck className="h-4 w-4" />
+                    ) : (
+                      <UserCircle className="h-4 w-4" />
+                    )}
+                  </ListItemIcon>
+                  {dashboardLabel}
+                </MenuItem>
+                <Divider sx={{ my: 0.5 }} />
+                <MenuItem onClick={handleSignOut}>
+                  <ListItemIcon>
+                    <LogOut className="h-4 w-4" />
+                  </ListItemIcon>
                   Sign out
-                </Button>
+                </MenuItem>
               </>
             ) : (
-              <div className="flex items-center gap-2">
-                <NavLink
-                  to="/register"
-                  className="group inline-flex items-center gap-2 rounded-full bg-brand-500/20 px-4 py-2 text-brand-100 transition hover:bg-brand-500/30"
-                >
-                  <UserPlus className="h-4 w-4" />
-                  Create account
-                </NavLink>
-                <NavLink
-                  to="/login"
-                  className="group inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-2 text-slate-200 transition hover:border-brand-300 hover:text-brand-200"
-                >
-                  <LogIn className="h-4 w-4" />
+              <>
+                <MenuItem component={NavLink} to="/login" onClick={handleMenuClose}>
+                  <ListItemIcon>
+                    <LogIn className="h-4 w-4" />
+                  </ListItemIcon>
                   Sign in
-                </NavLink>
-              </div>
+                </MenuItem>
+                <MenuItem component={NavLink} to="/register" onClick={handleMenuClose}>
+                  <ListItemIcon>
+                    <UserPlus className="h-4 w-4" />
+                  </ListItemIcon>
+                  Create account
+                </MenuItem>
+              </>
             )}
-          </div>
+          </Menu>
+        </div>
       </div>
     </header>
   );
