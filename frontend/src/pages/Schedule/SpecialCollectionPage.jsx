@@ -35,8 +35,13 @@ export default function SpecialCollectionPage({ session }) {
         async function loadConfig() {
             try {
                 const res = await fetch('/api/schedules/special/config')
-                const data = await res.json()
-                if (res.ok) {
+                let data = null
+                try {
+                    data = await res.json()
+                } catch (_parseError) {
+                    data = null
+                }
+                if (res.ok && data) {
                     setConfig(data)
                     if (data.items?.length) {
                         setForm(prev => ({
@@ -45,7 +50,7 @@ export default function SpecialCollectionPage({ session }) {
                         }))
                     }
                 } else {
-                    setError(data.message || 'Unable to load configuration.')
+                    setError(data?.message || 'Unable to load configuration.')
                 }
             } catch (err) {
                 setError(err.message)
@@ -59,9 +64,22 @@ export default function SpecialCollectionPage({ session }) {
         async function loadRequests() {
             try {
                 const res = await fetch(`/api/schedules/special/my?userId=${session.id || session._id}`)
-                const data = await res.json()
+                let data = null
+                try {
+                    data = await res.json()
+                } catch (_parseError) {
+                    data = null
+                }
                 if (res.ok) {
-                    setRequests(data.requests || [])
+                    setRequests(data?.requests || [])
+                } else {
+                    const message = data?.message || 'Unable to load your scheduled pickups.'
+                    if (res.status === 404 || res.status === 403) {
+                        setFeedback({ type: 'error', message })
+                    } else {
+                        setError(message)
+                    }
+                    setRequests([])
                 }
             } catch (err) {
                 console.warn('Failed to load existing pickups', err)
@@ -116,9 +134,19 @@ export default function SpecialCollectionPage({ session }) {
                     preferredDateTime: form.preferredDateTime,
                 }),
             })
-            const data = await res.json()
-            if (!res.ok) {
-                throw new Error(data.message || 'Unable to check availability')
+            let data = null
+            try {
+                data = await res.json()
+            } catch (_parseError) {
+                data = null
+            }
+            if (!res.ok || !data) {
+                const message = data?.message
+                    || (res.status === 404 ? 'We could not verify your session. Please sign in again.' : 'Unable to check availability')
+                if (res.status === 404 || res.status === 403) {
+                    setFeedback({ type: 'error', message })
+                }
+                throw new Error(message)
             }
             setAvailability(data)
         } catch (err) {
@@ -160,9 +188,19 @@ export default function SpecialCollectionPage({ session }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             })
-            const data = await res.json()
-            if (!res.ok) {
-                throw new Error(data.message || 'Unable to confirm slot')
+            let data = null
+            try {
+                data = await res.json()
+            } catch (_parseError) {
+                data = null
+            }
+            if (!res.ok || !data) {
+                const message = data?.message
+                    || (res.status === 404 ? 'We could not verify your session. Please sign in again.' : 'Unable to confirm slot')
+                if (res.status === 404 || res.status === 403) {
+                    setFeedback({ type: 'error', message })
+                }
+                throw new Error(message)
             }
             setFeedback({ type: 'success', message: data.message })
             setAvailability(null)
@@ -422,9 +460,13 @@ export default function SpecialCollectionPage({ session }) {
 
                 <Dialog
                     open={paymentDialog.open}
-                    onClose={() => handlePaymentDecision('cancel')}
+                    onClose={(_event, reason) => {
+                        if (bookingLoading) return
+                        handlePaymentDecision('cancel')
+                    }}
                     fullWidth
                     maxWidth="sm"
+                    disableEscapeKeyDown={bookingLoading}
                 >
                     <DialogTitle>Complete payment</DialogTitle>
                     <DialogContent dividers>

@@ -64,6 +64,49 @@ function Nav({ session, onSignOut }) {
     onSignOut()
   }
 
+  const menuItems = session
+    ? [
+        (
+          <MenuItem key="dashboard" component={NavLink} to={dashboardPath} onClick={handleMenuClose}>
+            <ListItemIcon>
+              {session.role === 'admin' ? (
+                <ShieldCheck className="h-4 w-4" />
+              ) : (
+                <UserCircle className="h-4 w-4" />
+              )}
+            </ListItemIcon>
+            {dashboardLabel}
+          </MenuItem>
+        ),
+        <Divider key="divider" sx={{ my: 0.5 }} component="li" />,
+        (
+          <MenuItem key="signout" onClick={handleSignOut}>
+            <ListItemIcon>
+              <LogOut className="h-4 w-4" />
+            </ListItemIcon>
+            Sign out
+          </MenuItem>
+        ),
+      ]
+    : [
+        (
+          <MenuItem key="signin" component={NavLink} to="/login" onClick={handleMenuClose}>
+            <ListItemIcon>
+              <LogIn className="h-4 w-4" />
+            </ListItemIcon>
+            Sign in
+          </MenuItem>
+        ),
+        (
+          <MenuItem key="register" component={NavLink} to="/register" onClick={handleMenuClose}>
+            <ListItemIcon>
+              <UserPlus className="h-4 w-4" />
+            </ListItemIcon>
+            Create account
+          </MenuItem>
+        ),
+      ];
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-800/60 bg-slate-950/90 backdrop-blur">
        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4 text-slate-100">
@@ -191,42 +234,7 @@ function Nav({ session, onSignOut }) {
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            {session ? (
-              <>
-                <MenuItem component={NavLink} to={dashboardPath} onClick={handleMenuClose}>
-                  <ListItemIcon>
-                    {session.role === 'admin' ? (
-                      <ShieldCheck className="h-4 w-4" />
-                    ) : (
-                      <UserCircle className="h-4 w-4" />
-                    )}
-                  </ListItemIcon>
-                  {dashboardLabel}
-                </MenuItem>
-                <Divider sx={{ my: 0.5 }} />
-                <MenuItem onClick={handleSignOut}>
-                  <ListItemIcon>
-                    <LogOut className="h-4 w-4" />
-                  </ListItemIcon>
-                  Sign out
-                </MenuItem>
-              </>
-            ) : (
-              <>
-                <MenuItem component={NavLink} to="/login" onClick={handleMenuClose}>
-                  <ListItemIcon>
-                    <LogIn className="h-4 w-4" />
-                  </ListItemIcon>
-                  Sign in
-                </MenuItem>
-                <MenuItem component={NavLink} to="/register" onClick={handleMenuClose}>
-                  <ListItemIcon>
-                    <UserPlus className="h-4 w-4" />
-                  </ListItemIcon>
-                  Create account
-                </MenuItem>
-              </>
-            )}
+            {menuItems}
           </Menu>
         </div>
       </div>
