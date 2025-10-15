@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography,} from '@mui/material'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
@@ -17,7 +17,7 @@ const initialForm = {
     preferredDateTime: '',
 }
 
-export default function SpecialCollectionPage({ session }) {
+export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     const navigate = useNavigate()
     const [config, setConfig] = useState(null)
     const [form, setForm] = useState(initialForm)
@@ -30,6 +30,13 @@ export default function SpecialCollectionPage({ session }) {
     const [paymentDialog, setPaymentDialog] = useState({ open: false, slot: null })
 
     const isAuthenticated = Boolean(session?.id || session?._id || session?.email)
+
+    const handleSessionExpired = useCallback((message) => {
+        if (onSessionInvalid) {
+            onSessionInvalid()
+        }
+        navigate('/login', { replace: true, state: { notice: message } })
+    }, [navigate, onSessionInvalid])
 
     useEffect(() => {
         async function loadConfig() {
@@ -75,7 +82,8 @@ export default function SpecialCollectionPage({ session }) {
                 } else {
                     const message = data?.message || 'Unable to load your scheduled pickups.'
                     if (res.status === 404 || res.status === 403) {
-                        setFeedback({ type: 'error', message })
+                        handleSessionExpired(message)
+                        return
                     } else {
                         setError(message)
                     }
@@ -144,7 +152,8 @@ export default function SpecialCollectionPage({ session }) {
                 const message = data?.message
                     || (res.status === 404 ? 'We could not verify your session. Please sign in again.' : 'Unable to check availability')
                 if (res.status === 404 || res.status === 403) {
-                    setFeedback({ type: 'error', message })
+                    handleSessionExpired(message)
+                    return
                 }
                 throw new Error(message)
             }
@@ -198,7 +207,8 @@ export default function SpecialCollectionPage({ session }) {
                 const message = data?.message
                     || (res.status === 404 ? 'We could not verify your session. Please sign in again.' : 'Unable to confirm slot')
                 if (res.status === 404 || res.status === 403) {
-                    setFeedback({ type: 'error', message })
+                    handleSessionExpired(message)
+                    return
                 }
                 throw new Error(message)
             }

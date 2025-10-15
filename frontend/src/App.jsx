@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Avatar, IconButton, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material'
 import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
@@ -481,6 +481,10 @@ export default function App() {
     setSessionUser(null)
   }
 
+  const handleSessionInvalid = useCallback(() => {
+    setSessionUser(null)
+  }, [])
+
   const currentYear = new Date().getFullYear()
   const reroutePath = sessionUser?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
 
@@ -496,7 +500,7 @@ export default function App() {
             <Route path="/collector" element={<CollectorView />} />
             <Route
               path="/schedule"
-              element={sessionUser ? <SpecialCollectionPage session={sessionUser} /> : <Navigate to="/login" replace />}
+              element={sessionUser ? <SpecialCollectionPage session={sessionUser} onSessionInvalid={handleSessionInvalid} /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/billing"

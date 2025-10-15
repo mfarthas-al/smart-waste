@@ -1,13 +1,19 @@
 import { useState } from 'react'
-import { useNavigate, Link as RouterLink } from 'react-router-dom'
+import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom'
 import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material'
 import { ShieldCheck } from 'lucide-react'
 
 export default function LoginPage({ onLogin }) {
     const navigate = useNavigate()
+    const location = useLocation()
     const [form, setForm] = useState({ email: '', password: '' })
     const [loading, setLoading] = useState(false)
-    const [feedback, setFeedback] = useState(null)
+    const [feedback, setFeedback] = useState(() => {
+        if (location.state?.notice) {
+            return { type: 'info', message: location.state.notice }
+        }
+        return null
+    })
 
     const handleChange = event => {
         const { name, value } = event.target
