@@ -38,7 +38,7 @@ function Nav({ session, onSignOut }) {
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-800/60 bg-slate-950/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4 text-slate-100">
+       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4 text-slate-100">
         <div className="flex flex-1 min-w-[16rem] items-center gap-3">
           <Link to="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
             <img
@@ -53,32 +53,53 @@ function Nav({ session, onSignOut }) {
             size="small"
             color="success"
             variant="outlined"
-            sx={{ borderRadius: '999px', fontWeight: 600, letterSpacing: '0.02em' }}
+            sx={{
+              borderRadius: "999px",
+              fontWeight: 600,
+              letterSpacing: "0.02em",
+            }}
           />
         </div>
-        <div className="flex flex-1 flex-wrap items-center justify-end gap-4">
-          <nav className="flex flex-wrap items-center gap-2 text-sm font-medium">
-            {navLinks.map(link => (
-              <Tooltip key={link.to} title={link.description} placement="bottom" arrow enterDelay={150}>
+        <nav className="flex items-center flex-nowrap gap-3 md:gap-4 text-sm font-medium">
+          {navLinks.map((link) => (
+            <Tooltip
+              key={link.to}
+              title={link.description}
+              placement="bottom"
+              arrow
+              enterDelay={150}
+              componentsProps={{
+                tooltip: { sx: { pointerEvents: "none" } }, // optional
+                popper: { sx: {} },
+              }}
+            >
+              <span className="inline-flex">
                 <NavLink
                   to={link.to}
-                  className={({ isActive }) => `group relative flex items-center gap-2 rounded-full px-4 py-2 transition ${
-                    isActive ? 'bg-brand-500/25 text-brand-100 shadow-inner' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                  }`}
+                  className={({ isActive }) =>
+                    `group relative inline-flex items-center gap-2 rounded-full px-4 py-2 transition
+         ${
+           isActive
+             ? "bg-brand-500/25 text-brand-100 shadow-inner"
+             : "text-slate-300 hover:bg-slate-800/80 hover:text-white"
+         }`
+                  }
                 >
                   {({ isActive }) => (
                     <>
-                      <link.icon className="h-4 w-4" />
-                      <span>{link.label}</span>
-                      {isActive && <span className="h-2 w-2 rounded-full bg-brand-200" />}
+                      <link.icon className="h-4 w-4 shrink-0" />
+                      <span className="whitespace-nowrap">{link.label}</span>
+                      {isActive && (
+                        <span className="h-2 w-2 rounded-full bg-brand-200" />
+                      )}
                     </>
                   )}
                 </NavLink>
-              </Tooltip>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3">
+              </span>
+            </Tooltip>
+          ))}
+        </nav>
+        <div className="flex items-center gap-3">
             {session ? (
               <>
                 <div className="hidden text-right sm:block">
@@ -123,24 +144,56 @@ function Nav({ session, onSignOut }) {
               </div>
             )}
           </div>
-        </div>
       </div>
     </header>
-  )
+  );
 }
 
 function Home() {
   const highlights = [
-    { label: 'Avg. Pickup Load', value: '2.6 t', helper: 'Across Colombo wards last 7 days', icon: Gauge },
-    { label: 'Route Completion', value: '92%', helper: 'On-time stops today', icon: CheckCircle2 },
-    { label: 'Alerts', value: '5 bins', helper: 'Approaching overflow threshold', icon: AlertTriangle },
-  ]
+    {
+      label: "Avg. Pickup Load",
+      value: "2.6 t",
+      helper: "Across Colombo wards last 7 days",
+      icon: Gauge,
+    },
+    {
+      label: "Route Completion",
+      value: "92%",
+      helper: "On-time stops today",
+      icon: CheckCircle2,
+    },
+    {
+      label: "Alerts",
+      value: "5 bins",
+      helper: "Approaching overflow threshold",
+      icon: AlertTriangle,
+    },
+  ];
 
   const quickLinks = [
-    { to: '/ops', headline: 'Optimize ward routes', copy: 'Generate the most efficient path in seconds.', icon: MapPinned, accent: 'from-brand-400/30 via-brand-400/10 to-transparent' },
-    { to: '/collector', headline: 'Coordinate field teams', copy: 'Live progress and digital checklists for crews.', icon: Truck, accent: 'from-sky-400/30 via-sky-400/10 to-transparent' },
-    { to: '/analytics', headline: 'Spot hotspots early', copy: 'Use telemetry to prevent overflow incidents.', icon: BarChart3, accent: 'from-amber-400/30 via-amber-400/10 to-transparent' },
-  ]
+    {
+      to: "/ops",
+      headline: "Optimize ward routes",
+      copy: "Generate the most efficient path in seconds.",
+      icon: MapPinned,
+      accent: "from-brand-400/30 via-brand-400/10 to-transparent",
+    },
+    {
+      to: "/collector",
+      headline: "Coordinate field teams",
+      copy: "Live progress and digital checklists for crews.",
+      icon: Truck,
+      accent: "from-sky-400/30 via-sky-400/10 to-transparent",
+    },
+    {
+      to: "/analytics",
+      headline: "Spot hotspots early",
+      copy: "Use telemetry to prevent overflow incidents.",
+      icon: BarChart3,
+      accent: "from-amber-400/30 via-amber-400/10 to-transparent",
+    },
+  ];
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-12 px-6 py-12">
@@ -150,49 +203,83 @@ function Home() {
             <Sparkles className="h-3.5 w-3.5" />
             City operations cockpit
           </div>
-          <h1 className="mt-4 text-3xl font-semibold text-slate-900 sm:text-4xl">City-scale waste collection, simplified.</h1>
-          <p className="mt-4 text-lg text-slate-600">Plan routes, guide crews, and monitor performance in one workspace tailored for Sri Lankan municipalities.</p>
+          <h1 className="mt-4 text-3xl font-semibold text-slate-900 sm:text-4xl">
+            City-scale waste collection, simplified.
+          </h1>
+          <p className="mt-4 text-lg text-slate-600">
+            Plan routes, guide crews, and monitor performance in one workspace
+            tailored for Sri Lankan municipalities.
+          </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Link to="/ops" className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/40 transition hover:translate-y-[-1px] hover:bg-brand-500">
+            <Link
+              to="/ops"
+              className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-brand-500/40 transition hover:translate-y-[-1px] hover:bg-brand-500"
+            >
               Start a new plan
               <ArrowUpRight className="h-4 w-4" />
             </Link>
-            <Link to="/collector" className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700">
+            <Link
+              to="/collector"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
+            >
               View collector route
             </Link>
           </div>
         </div>
         <div className="glass-panel rounded-4xl border border-slate-200/60 bg-slate-950/95 p-8 text-slate-100 shadow-xl shadow-slate-900/40">
-          <h2 className="text-sm uppercase tracking-wide text-slate-400">Ops snapshot</h2>
+          <h2 className="text-sm uppercase tracking-wide text-slate-400">
+            Ops snapshot
+          </h2>
           <div className="mt-6 grid gap-6">
-            {highlights.map(item => (
-              <div key={item.label} className="flex items-start justify-between rounded-2xl bg-slate-900/60 px-5 py-4">
+            {highlights.map((item) => (
+              <div
+                key={item.label}
+                className="flex items-start justify-between rounded-2xl bg-slate-900/60 px-5 py-4"
+              >
                 <div className="flex items-start gap-3">
                   <item.icon className="mt-0.5 h-5 w-5 text-brand-300" />
                   <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-400">{item.label}</p>
-                    <p className="mt-2 text-2xl font-semibold text-white">{item.value}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-400">
+                      {item.label}
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-white">
+                      {item.value}
+                    </p>
                   </div>
                 </div>
-                <p className="max-w-[12rem] text-right text-xs text-slate-400">{item.helper}</p>
+                <p className="max-w-[12rem] text-right text-xs text-slate-400">
+                  {item.helper}
+                </p>
               </div>
             ))}
           </div>
-          <p className="mt-6 text-xs text-slate-400">Service window: 04:30 – 18:00 Colombo Time</p>
+          <p className="mt-6 text-xs text-slate-400">
+            Service window: 04:30 – 18:00 Colombo Time
+          </p>
         </div>
       </section>
 
       <section className="grid gap-6 md:grid-cols-3">
-        {quickLinks.map(card => (
-          <Link key={card.to} to={card.to} className="group relative overflow-hidden rounded-4xl border border-slate-200/70 bg-white/80 p-6 shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-xl">
-            <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent}`} />
+        {quickLinks.map((card) => (
+          <Link
+            key={card.to}
+            to={card.to}
+            className="group relative overflow-hidden rounded-4xl border border-slate-200/70 bg-white/80 p-6 shadow-md transition duration-200 hover:-translate-y-1 hover:shadow-xl"
+          >
+            <div
+              className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${card.accent}`}
+            />
             <div className="relative flex h-full flex-col justify-between gap-6">
               <div className="flex items-center gap-3 text-slate-500">
                 <card.icon className="h-5 w-5" />
-                <p className="text-xs font-semibold uppercase tracking-wide">Go to module</p>
+                <p className="text-xs font-semibold uppercase tracking-wide">
+                  Go to module
+                </p>
               </div>
               <div>
-                <h3 className="text-xl font-semibold text-slate-900">{card.headline}</h3>
+                <h3 className="text-xl font-semibold text-slate-900">
+                  {card.headline}
+                </h3>
                 <p className="mt-3 text-sm text-slate-600">{card.copy}</p>
               </div>
               <span className="inline-flex items-center gap-2 text-sm font-semibold text-brand-600 transition group-hover:text-brand-700">
@@ -204,38 +291,38 @@ function Home() {
         ))}
       </section>
     </div>
-  )
+  );
 }
 
 // Create a custom Material UI theme that integrates with our Tailwind colors
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#10b981', // brand-500
-      light: '#34d399', // brand-400
-      dark: '#059669', // brand-600
-      contrastText: '#ffffff',
+      main: "#10b981", // brand-500
+      light: "#34d399", // brand-400
+      dark: "#059669", // brand-600
+      contrastText: "#ffffff",
     },
     secondary: {
-      main: '#475569', // slate-600
-      light: '#64748b', // slate-500
-      dark: '#334155', // slate-700
-      contrastText: '#ffffff',
+      main: "#475569", // slate-600
+      light: "#64748b", // slate-500
+      dark: "#334155", // slate-700
+      contrastText: "#ffffff",
     },
     background: {
-      default: '#f8fafc', // slate-50
-      paper: '#ffffff',
+      default: "#f8fafc", // slate-50
+      paper: "#ffffff",
     },
     text: {
-      primary: '#0f172a', // slate-900
-      secondary: '#475569', // slate-600
+      primary: "#0f172a", // slate-900
+      secondary: "#475569", // slate-600
     },
   },
   shape: {
     borderRadius: 8,
   },
   typography: {
-    fontFamily: 'Inter, system-ui, sans-serif',
+    fontFamily: "Inter, system-ui, sans-serif",
     h1: {
       fontWeight: 600,
     },
@@ -250,7 +337,7 @@ const theme = createTheme({
     },
     button: {
       fontWeight: 600,
-      textTransform: 'none',
+      textTransform: "none",
     },
   },
   components: {
@@ -339,13 +426,19 @@ export default function App() {
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6">
             <p>© {currentYear} Smart Waste Sri Lanka Pilot</p>
             <div className="flex gap-4">
-              <Link to="/ops" className="hover:text-slate-700">Operations Control</Link>
-              <Link to="/collector" className="hover:text-slate-700">Field Crew</Link>
-              <Link to="/analytics" className="hover:text-slate-700">Insights</Link>
+              <Link to="/ops" className="hover:text-slate-700">
+                Operations Control
+              </Link>
+              <Link to="/collector" className="hover:text-slate-700">
+                Field Crew
+              </Link>
+              <Link to="/analytics" className="hover:text-slate-700">
+                Insights
+              </Link>
             </div>
           </div>
         </footer>
       </div>
     </ThemeProvider>
-  )
+  );
 }
