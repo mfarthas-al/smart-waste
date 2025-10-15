@@ -5,13 +5,28 @@ Smart Waste LK is a proof-of-concept platform for Sri Lankan municipalities to o
 ## Features
 - Route optimisation that filters bins by fill threshold, respects truck capacity, and returns the shortest greedy path.
 - Collector shift companion that surfaces the current route, highlights pending bins, and records collection events.
+- Resident authentication and self-service registration with role-based dashboards for admins and field crews.
+- Special waste collection scheduling with slot availability checks, booking confirmation, and payment tracking.
 - Ward-level scheduling, billing, and analytics modules scaffolded for future expansion.
-- Seed script that generates realistic bin data around Colombo for demo and testing purposes.
+- Seed script that generates realistic bin data and demo user accounts for rapid onboarding.
 
 ## Tech Stack
 - **Backend**: Node.js, Express 5, Mongoose 8, MongoDB Atlas, Zod for input validation (ready for use), Morgan for request logging.
 - **Frontend**: React 19 with Vite, Tailwind CSS, Material UI 6, Lucide icons, React Router 7.
 - **Tooling**: Nodemon for local backend reloads, Jest + Supertest placeholders, PostCSS, ESLint, dotenv-based configuration.
+
+## Recent Enhancements
+- **Authentication refresh**: Login and registration flows now enforce active accounts, hash passwords with bcrypt, and route users to role-aware dashboards.
+- **Special collection flow**: `/api/schedules/special/*` endpoints expose item policies, availability calculation, booking confirmation, and request history. The accompanying React page (`frontend/src/pages/Schedule/SpecialCollectionPage.jsx`) presents residents with a guided booking experience and simulated payment capture.
+
+Run `npm run lint` inside `frontend` after wiring the page into `App.jsx` to ensure the UI compiles cleanly.
+
+## Demo Accounts
+Execute `node scripts/seedLK.js` to populate demo data. The seeder provisions:
+- **Admin**: `admin@smartwaste.lk` / `Admin@123`
+- **Field crew**: `collector@smartwaste.lk` / `Collector@123`
+
+Use these credentials to explore the new authentication and scheduling flows locally.
 
 ## Repository Layout
 ```
