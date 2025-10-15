@@ -14,6 +14,12 @@ async function authenticate(email, password) {
   const user = await User.findOne({ email: normalizedEmail });
   if (!user) return null;
 
+  if (!user.isActive) {
+    const error = new Error('This account is not active. Please contact support.');
+    error.code = 'ACCOUNT_INACTIVE';
+    throw error;
+  }
+
   const passwordOk = await user.verifyPassword(password);
   if (!passwordOk) return null;
 

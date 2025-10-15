@@ -30,6 +30,9 @@ async function login(req, res, next) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ ok: false, message: error.errors[0].message });
     }
+    if (error.code === 'ACCOUNT_INACTIVE') {
+      return res.status(403).json({ ok: false, message: error.message });
+    }
     return next(error);
   }
 }
