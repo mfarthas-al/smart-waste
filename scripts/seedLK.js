@@ -5,6 +5,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../backend/.env') });
 const { connectDB } = require('../backend/src/db/mongoose');
 const WasteBin = require('../backend/src/models/WasteBin');
 const User = require('../backend/src/models/User');
+const WasteCollectionRecord = require('../backend/src/models/WasteCollectionRecord');
 
 const CITIES = [
   {
@@ -48,15 +49,67 @@ const makeBinRecords = () => {
   return records;
 };
 
+const WASTE_TYPES = ['household', 'business', 'organic', 'recyclable'];
+const BILLING_MODELS = ['weight-based', 'flat-fee', 'subscription'];
+
+const makeCollectionRecords = () => {
+  const today = new Date();
+  const lookbackDays = 45;
+  const records = [];
+
+  for (const city of CITIES) {
+    for (let dayOffset = 0; dayOffset < lookbackDays; dayOffset += 1) {
+      const date = new Date(today);
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - dayOffset);
+
+      const dailyHouseholds = Math.floor(8 + Math.random() * 6);
+      for (let householdIndex = 0; householdIndex < dailyHouseholds; householdIndex += 1) {
+        const wasteType = WASTE_TYPES[Math.floor(Math.random() * WASTE_TYPES.length)];
+        const billingModel = BILLING_MODELS[Math.floor(Math.random() * BILLING_MODELS.length)];
+
+        const baseWeight = wasteType === 'business'
+          ? 120 + Math.random() * 60
+          : 30 + Math.random() * 40;
+
+        const recyclableRatio = wasteType === 'recyclable'
+          ? 0.85
+          : wasteType === 'organic'
+            ? 0.35 + Math.random() * 0.15
+            : 0.2 + Math.random() * 0.2;
+
+        const recyclableKg = Number((baseWeight * recyclableRatio).toFixed(2));
+        const nonRecyclableKg = Number((baseWeight - recyclableKg).toFixed(2));
+
+        records.push({
+          collectionDate: date,
+          region: city.name,
+          zone: `${city.name}-Zone-${1 + (householdIndex % 3)}`,
+          householdId: `${city.name.slice(0, 3).toUpperCase()}-${String(householdIndex + 1).padStart(3, '0')}`,
+          customerType: wasteType === 'business' ? 'business' : 'household',
+          wasteType,
+          billingModel,
+          weightKg: Number(baseWeight.toFixed(2)),
+          recyclableKg,
+          nonRecyclableKg,
+          recyclableRatio: Number((recyclableKg / Math.max(baseWeight, 1)).toFixed(2)),
+        });
+      }
+    }
+  }
+
+  return records;
+};
+
 (async () => {
   try {
     await connectDB();
-    await WasteBin.deleteMany({});
+    await Promise.all([
+      WasteBin.deleteMany({}),
+      WasteCollectionRecord.deleteMany({}),
+      User.deleteMany({}),
+    ]);
 
-    await WasteBin.insertMany(Array.from({ length: 80 }, (_, i) => mk(i + 1)));
-    console.log('✅ Seeded 80 bins');
-
-    await User.deleteMany({});
     const [adminHash, regularHash] = await Promise.all([
       User.hashPassword('Admin@123'),
       User.hashPassword('Collector@123'),
@@ -75,12 +128,15 @@ const makeBinRecords = () => {
         role: 'regular',
       },
     ]);
-    console.log('✅ Seeded admin and regular users');
-    
+  console.log('✅ Seeded admin and regular users');
 
-    const docs = makeBinRecords();
-    await WasteBin.insertMany(docs);
-    console.log(`✅ Seeded ${docs.length} bins across ${CITIES.length} cities`);
+  const binDocs = makeBinRecords();
+  await WasteBin.insertMany(binDocs);
+  console.log(`✅ Seeded ${binDocs.length} bins across ${CITIES.length} cities`);
+
+  const collectionDocs = makeCollectionRecords();
+  await WasteCollectionRecord.insertMany(collectionDocs);
+  console.log(`✅ Seeded ${collectionDocs.length} waste collection records for analytics`);
 
   } catch (e) {
     console.error('❌ Seed failed:', e.message);
