@@ -1,6 +1,7 @@
 const WasteBin = require('../../models/WasteBin')
 const RoutePlan = require('../../models/RoutePlan')
 const CollectionEvent = require('../../models/CollectionEvent')
+const lk = require('../../config/region.lk.json')
 const { optimize } = require('./service.routing')
 
 const startOfDay = date => {
@@ -17,22 +18,25 @@ const endOfDay = date => {
 
 exports.optimizeRoute = async (req, res) => {
   try {
-    const { ward, date, truckId } = req.body || {}
-    if (!ward) {
-      return res.status(400).json({ error: 'ward is required' })
+    const { city, ward, date, truckId } = req.body || {}
+    const serviceArea = city || ward
+    if (!serviceArea) {
+      return res.status(400).json({ error: 'city (or ward) is required' })
     }
 
     const assignedTruck = truckId || 'TRUCK-01'
     const planDate = date ? new Date(date) : new Date()
     const planDayStart = startOfDay(planDate)
     const planDayEnd = endOfDay(planDate)
-    const bins = await WasteBin.find({ ward }).lean().exec()
-    const plan = optimize({ bins })
+    const depot = (lk.operations.city_depots && lk.operations.city_depots[serviceArea]) || lk.operations.default_depot
+    const bins = await WasteBin.find({ ward: serviceArea }).lean().exec()
+    const plan = optimize({ bins, depot })
 
     const payload = {
-      ward,
+      ward: serviceArea,
       truckId: assignedTruck,
       date: planDayStart,
+      depot,
       stops: (plan.stops || []).map(stop => ({ ...stop, visited: Boolean(stop.visited) })),
       loadKg: plan.loadKg || 0,
       distanceKm: plan.distanceKm || 0,
@@ -40,7 +44,7 @@ exports.optimizeRoute = async (req, res) => {
 
     const saved = await RoutePlan.findOneAndUpdate(
       {
-        ward,
+        ward: serviceArea,
         truckId: assignedTruck,
         date: { $gte: planDayStart, $lte: planDayEnd },
       },
@@ -70,7 +74,16 @@ exports.getTodayRoute = async (req, res) => {
       .sort({ updatedAt: -1 })
       .lean()
 
-    return res.json(plan || { stops: [] })
+    if (!plan) {
+      return res.json({ stops: [] })
+    }
+
+    if (!plan.depot) {
+      const fallbackDepot = (lk.operations.city_depots && lk.operations.city_depots[plan.ward]) || lk.operations.default_depot
+      plan.depot = fallbackDepot
+    }
+
+    return res.json(plan)
   } catch (error) {
     console.error('getTodayRoute error', error)
     return res.status(500).json({ error: 'Unable to load route' })

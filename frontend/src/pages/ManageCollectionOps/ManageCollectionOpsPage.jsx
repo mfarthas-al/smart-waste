@@ -1,16 +1,32 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, CardContent, Chip, Divider, LinearProgress, Tooltip } from '@mui/material'
 import { Loader2, MapPinned, RefreshCw, Share2, FileDown, ShieldCheck } from 'lucide-react'
 import RouteMap from './RouteMap.jsx';
-const DEPOT = { lat: 6.927, lon: 79.861 }; // same as backend region.lk.json
+
+const CITY_OPTIONS = [
+  { value: 'Rajagiriya', label: 'Rajagiriya', depot: { lat: 6.9025, lon: 79.9053 } },
+  { value: 'Kolonnawa', label: 'Kolonnawa', depot: { lat: 6.9476, lon: 79.8846 } },
+  { value: 'Borella', label: 'Borella', depot: { lat: 6.9147, lon: 79.8733 } },
+]
 
 export default function ManageCollectionOpsPage() {
-  const [ward, setWard] = useState('CMC-W05')
+  const [city, setCity] = useState(CITY_OPTIONS[0].value)
   const [plan, setPlan] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastOptimizedAt, setLastOptimizedAt] = useState(null)
   const capacityLimit = 3000
+
+  useEffect(() => {
+    setPlan(null)
+    setError('')
+    setLastOptimizedAt(null)
+  }, [city])
+
+  const selectedCity = useMemo(() => CITY_OPTIONS.find(option => option.value === city) || CITY_OPTIONS[0], [city])
+  const currentDepot = plan?.depot ?? selectedCity.depot
+  const depotLat = currentDepot ? currentDepot.lat.toFixed(3) : '—'
+  const depotLon = currentDepot ? currentDepot.lon.toFixed(3) : '—'
 
   async function optimize() {
     setLoading(true)
@@ -19,15 +35,16 @@ export default function ManageCollectionOpsPage() {
       const res = await fetch('/api/ops/routes/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ward }),
+        body: JSON.stringify({ city }),
       })
 
       if (!res.ok) {
         throw new Error(`Optimize failed with status ${res.status}`)
       }
 
-      const data = await res.json()
-      setPlan(data)
+  const data = await res.json()
+  const normalized = { ...data, depot: data.depot || selectedCity.depot }
+  setPlan(normalized)
       setLastOptimizedAt(new Date())
     } catch (err) {
       console.error('optimize error', err)
@@ -42,9 +59,14 @@ export default function ManageCollectionOpsPage() {
   const summary = useMemo(() => {
     return [
       {
+        label: 'City selected',
+        value: selectedCity?.label || city,
+        helper: 'Service area within Colombo district',
+      },
+      {
         label: 'Truck assigned',
         value: plan?.truckId || 'TRUCK-01',
-        helper: plan?.truckId ? 'Active crew for this ward' : 'Default assignment when no plan exists',
+  helper: plan?.truckId ? 'Active crew for this city' : 'Default assignment when no plan exists',
       },
       {
         label: 'Stops scheduled',
@@ -63,7 +85,7 @@ export default function ManageCollectionOpsPage() {
         helper: 'Projected round trip travel',
       },
     ]
-  }, [plan, loadProgress])
+  }, [plan, loadProgress, selectedCity, city])
 
   const waypoints = plan?.stops ?? []
   const avgLegDistance = plan && plan.stops?.length ? (plan.distanceKm / plan.stops.length).toFixed(2) : '—'
@@ -75,7 +97,7 @@ export default function ManageCollectionOpsPage() {
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-3xl font-semibold text-slate-900">Manage Collection Operations</h2>
-            <p className="mt-2 max-w-xl text-sm text-slate-600">Select a ward to generate an optimized truck route based on fill thresholds, collection capacity, and proximity to the depot.</p>
+            <p className="mt-2 max-w-xl text-sm text-slate-600">Select a Colombo city to generate an optimized truck route based on fill thresholds, collection capacity, and proximity to the depot.</p>
           </div>
           <Chip
             icon={<ShieldCheck className="h-3.5 w-3.5" />}
@@ -91,11 +113,16 @@ export default function ManageCollectionOpsPage() {
             <Card className="glass-panel rounded-3xl border border-slate-200/70">
               <CardContent className="space-y-5">
                 <div className="flex flex-wrap items-center gap-4">
-                  <label className="text-xs uppercase tracking-wide text-slate-500">Ward focus</label>
-                  <Tooltip title="Ward with highest bin density" placement="top" arrow>
-                    <select className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none" value={ward} onChange={e=>setWard(e.target.value)}>
-                      <option>CMC-W05</option>
-                      <option>CMC-W06</option>
+                  <label className="text-xs uppercase tracking-wide text-slate-500">City focus</label>
+                  <Tooltip title="Select a Colombo city cluster" placement="top" arrow>
+                    <select
+                      className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none"
+                      value={city}
+                      onChange={e => setCity(e.target.value)}
+                    >
+                      {CITY_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </Tooltip>
                   <Button
@@ -110,7 +137,10 @@ export default function ManageCollectionOpsPage() {
                   </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
-                  <span className="inline-flex items-center gap-2"><MapPinned className="h-3.5 w-3.5 text-brand-500" />Depot: Peliyagoda Transfer Station</span>
+                  <span className="inline-flex items-center gap-2">
+                    <MapPinned className="h-3.5 w-3.5 text-brand-500" />
+                    Depot: {selectedCity.label} ({depotLat} · {depotLon})
+                  </span>
                   {lastOptimizedAt && <span>Last run: {lastOptimizedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                   <span>Truck default: {plan?.truckId || 'TRUCK-01'}</span>
                 </div>
@@ -173,9 +203,9 @@ export default function ManageCollectionOpsPage() {
             </div>
 
             {plan && (
-                <div className="mt-6">
-                    <RouteMap plan={plan} depot={DEPOT} />
-                </div>
+              <div className="mt-6">
+                <RouteMap plan={plan} depot={currentDepot} />
+              </div>
             )}
 
             <ol className="mt-6 space-y-3">
