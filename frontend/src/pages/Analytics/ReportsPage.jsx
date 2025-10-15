@@ -1,25 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  Chip,
-  CircularProgress,
-  Divider,
-  FormControl,
-  FormControlLabel,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, CardHeader, Chip, CircularProgress, Divider, FormControl, FormControlLabel, Grid, InputLabel, MenuItem, Select, Stack, Switch, TextField, Typography, } from '@mui/material'
 import { Save, SlidersHorizontal, BarChart3, LineChart, PieChart, Download } from 'lucide-react'
 import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'

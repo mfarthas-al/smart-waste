@@ -8,6 +8,7 @@ Smart Waste LK is a proof-of-concept platform for Sri Lankan municipalities to o
 - Resident authentication and self-service registration with role-based dashboards for admins and field crews.
 - Special waste collection scheduling with slot availability checks, booking confirmation, and payment tracking.
 - Ward-level scheduling, billing, and analytics modules scaffolded for future expansion.
+- Waste analytics workspace for municipal officers with configurable filters and exportable insights.
 - Seed script that generates realistic bin data and demo user accounts for rapid onboarding.
 
 ## Tech Stack
@@ -18,15 +19,16 @@ Smart Waste LK is a proof-of-concept platform for Sri Lankan municipalities to o
 ## Recent Enhancements
 - **Authentication refresh**: Login and registration flows now enforce active accounts, hash passwords with bcrypt, and route users to role-aware dashboards.
 - **Special collection flow**: `/api/schedules/special/*` endpoints expose item policies, availability calculation, booking confirmation, and request history. The accompanying React page (`frontend/src/pages/Schedule/SpecialCollectionPage.jsx`) presents residents with a guided booking experience and simulated payment capture.
+- **Waste analytics suite**: Admin-only `/api/analytics/config` and `/api/analytics/report` endpoints serve filter metadata and aggregated waste statistics (household, regional, recycling splits). The React Reports page (`frontend/src/pages/Analytics/ReportsPage.jsx`) offers chart/table visualisations with PDF and Excel exports powered by `jspdf` and `xlsx`.
 
-Run `npm run lint` inside `frontend` after wiring the page into `App.jsx` to ensure the UI compiles cleanly.
+Run `npm install` inside `frontend` to pull the new report export dependencies, then `npm run lint` to ensure the UI compiles cleanly.
 
 ## Demo Accounts
 Execute `node scripts/seedLK.js` to populate demo data. The seeder provisions:
 - **Admin**: `admin@smartwaste.lk` / `Admin@123`
 - **Field crew**: `collector@smartwaste.lk` / `Collector@123`
 
-Use these credentials to explore the new authentication and scheduling flows locally.
+Use these credentials to explore the new authentication, scheduling, and analytics flows locally. The seed script also synthesises 1.3k+ `WasteCollectionRecord` documents so the analytics module has realistic data to aggregate.
 
 ## Repository Layout
 ```
@@ -89,16 +91,24 @@ npm run dev
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | GET    | `/health` | Simple service heartbeat. |
-| POST   | `/api/ops/routes/optimize` | Generates a route plan for a ward. Body accepts `ward`, optional `date`, `truckId`. |
+| POST   | `/api/auth/login` | Authenticates a user; rejects inactive accounts. |
+| POST   | `/api/auth/register` | Creates a regular user account after validation. |
+| POST   | `/api/ops/routes/optimize` | Generates a route plan for a ward or city selection. |
 | GET    | `/api/ops/routes/:truckId/today` | Returns today's route for the specified truck (default `TRUCK-01`). |
 | POST   | `/api/ops/collections` | Records a collection event and marks the stop as visited. |
-| GET    | `/api/schedules` | Placeholder endpoint returning an empty array. |
+| GET    | `/api/schedules/special/config` | Returns allowed item types, slot policies, and payment thresholds for special collections. |
+| POST   | `/api/schedules/special/availability` | Checks slot availability for a resident's preferred window. |
+| POST   | `/api/schedules/special/confirm` | Books a slot and records payment metadata when required. |
+| GET    | `/api/schedules/special/my` | Lists a resident's historical and upcoming special collection requests. |
+| GET    | `/api/analytics/config` | Supplies available regions, waste types, billing models, and default date ranges (admin only). |
+| POST   | `/api/analytics/report` | Generates waste analytics aggregates for the supplied filters (admin only). |
 | GET    | `/api/billing/bills` | Placeholder endpoint returning an empty array. |
-| GET    | `/api/analytics/summary` | Placeholder endpoint returning an empty object. |
 
 ## Frontend Highlights
 - **Manage Collection Ops**: Control-centre view to run optimisations, review key metrics, and brief crews.
 - **Collector View**: Field-friendly checklist that syncs with the API, tracks progress, and handles offline-friendly error states.
+- **Special Collections**: Resident-facing booking flow that validates slots, handles simulated payments, and surfaces history.
+- **Reports & Analytics**: Admin dashboard to generate charts/tables, toggle sections, and export PDF/Excel snapshots.
 - Shared Material UI theme aligned with Tailwind colour tokens for consistent styling.
 
 ## Testing & Quality
