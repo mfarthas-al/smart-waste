@@ -1,73 +1,70 @@
-import { Link, NavLink, Routes, Route } from "react-router-dom";
-import {
-  CssBaseline,
-  Chip,
-  Tooltip,
-  ThemeProvider,
-  createTheme,
-} from "@mui/material";
-import {
-  MapPinned,
-  ClipboardCheck,
-  Truck,
-  CalendarClock,
-  Receipt,
-  BarChart3,
-  Sparkles,
-  Gauge,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowUpRight,
-} from "lucide-react";
-import "./App.css";
-import ManageCollectionOpsPage from "./pages/ManageCollectionOps/ManageCollectionOpsPage.jsx";
-import CollectorView from "./pages/ManageCollectionOps/CollectorView.jsx";
+import { useEffect, useState } from 'react'
+import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
+import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Avatar, IconButton, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material'
+import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
+import './App.css'
+import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
+import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
+import LoginPage from './pages/Auth/LoginPage.jsx'
+import RegisterPage from './pages/Auth/RegisterPage.jsx'
+import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
+import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 
-const navLinks = [
-  {
-    to: "/ops",
-    label: "Collection Ops",
-    description: "Plan and monitor routes",
-    icon: MapPinned,
-  },
-  {
-    to: "/collector",
-    label: "Collector",
-    description: "Daily stop checklist",
-    icon: ClipboardCheck,
-  },
-  {
-    to: "/schedule",
-    label: "Schedule",
-    description: "Pickup calendar",
-    icon: CalendarClock,
-  },
-  {
-    to: "/billing",
-    label: "Billing",
-    description: "Payments & invoices",
-    icon: Receipt,
-  },
-  {
-    to: "/analytics",
-    label: "Analytics",
-    description: "Performance dashboards",
-    icon: BarChart3,
-  },
-];
+const baseNavLinks = [
+  { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
+  { to: '/collector', label: 'Collector', description: 'Daily stop checklist', icon: ClipboardCheck },
+  { to: '/schedule', label: 'Schedule', description: 'Pickup calendar', icon: CalendarClock },
+  { to: '/billing', label: 'Billing', description: 'Payments & invoices', icon: Receipt },
+  { to: '/analytics', label: 'Analytics', description: 'Performance dashboards', icon: BarChart3 },
+]
 
-function Nav() {
+function Nav({ session, onSignOut }) {
+  const [menuAnchor, setMenuAnchor] = useState(null)
+  const navLinks = [...baseNavLinks]
+  if (session?.role === 'admin') {
+    navLinks.push({
+      to: '/adminDashboard',
+      label: 'Admin Desk',
+      description: 'Administration controls',
+      icon: ShieldCheck,
+    })
+  } else if (session?.role === 'regular') {
+    navLinks.push({
+      to: '/userDashboard',
+      label: 'Crew Desk',
+      description: 'Your field assignments',
+      icon: UserCircle,
+    })
+  }
+
+  const menuOpen = Boolean(menuAnchor)
+  const dashboardPath = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
+  const dashboardLabel = session?.role === 'admin' ? 'Admin dashboard' : 'My dashboard'
+  const userInitial = session?.name?.[0]?.toUpperCase() ?? 'S'
+
+  const handleMenuOpen = event => {
+    setMenuAnchor(event.currentTarget)
+  }
+
+  const handleMenuClose = () => {
+    setMenuAnchor(null)
+  }
+
+  const handleSignOut = () => {
+    handleMenuClose()
+    onSignOut()
+  }
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-800/60 bg-slate-950/90 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4 text-slate-100">
-        <div className="flex items-center gap-3">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-lg font-semibold tracking-tight"
-          >
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-500/15 text-brand-200">
-              SW
-            </span>
+       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-4 text-slate-100">
+        <div className="flex flex-1 min-w-[16rem] items-center gap-3">
+          <Link to="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+            <img
+              src="/logo.png"
+              alt="Smart Waste LK"
+              className="h-9 w-9 rounded-full border border-brand-500/30 p-1 object-contain shadow-sm"
+            />
             Smart Waste LK
           </Link>
           <Chip
@@ -121,6 +118,108 @@ function Nav() {
             </Tooltip>
           ))}
         </nav>
+        <div className="flex items-center gap-3">
+          {session && (
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-semibold text-slate-100">{session.name}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-400">{session.role}</p>
+            </div>
+          )}
+          <Tooltip title="Account" placement="bottom" arrow>
+            <IconButton
+              onClick={handleMenuOpen}
+              size="small"
+              sx={{
+                borderRadius: '50%',
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                padding: 0,
+              }}
+              aria-controls={menuOpen ? 'account-menu' : undefined}
+              aria-haspopup="true"
+              aria-expanded={menuOpen ? 'true' : undefined}
+            >
+              <Avatar
+                sx={{
+                  width: 36,
+                  height: 36,
+                  bgcolor: 'rgba(16, 185, 129, 0.15)',
+                  color: '#10b981',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                }}
+              >
+                {session ? userInitial : <UserRound className="h-4 w-4" />}
+              </Avatar>
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={menuAnchor}
+            id="account-menu"
+            open={menuOpen}
+            onClose={handleMenuClose}
+            onClick={handleMenuClose}
+            PaperProps={{
+              elevation: 4,
+              sx: {
+                mt: 1.5,
+                minWidth: 200,
+                borderRadius: 3,
+                overflow: 'visible',
+                '&::before': {
+                  content: '""',
+                  display: 'block',
+                  position: 'absolute',
+                  top: 0,
+                  right: 18,
+                  width: 12,
+                  height: 12,
+                  bgcolor: 'background.paper',
+                  transform: 'translateY(-50%) rotate(45deg)',
+                  zIndex: 0,
+                },
+              },
+            }}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+          >
+            {session ? (
+              <>
+                <MenuItem component={NavLink} to={dashboardPath} onClick={handleMenuClose}>
+                  <ListItemIcon>
+                    {session.role === 'admin' ? (
+                      <ShieldCheck className="h-4 w-4" />
+                    ) : (
+                      <UserCircle className="h-4 w-4" />
+                    )}
+                  </ListItemIcon>
+                  {dashboardLabel}
+                </MenuItem>
+                <Divider sx={{ my: 0.5 }} />
+                <MenuItem onClick={handleSignOut}>
+                  <ListItemIcon>
+                    <LogOut className="h-4 w-4" />
+                  </ListItemIcon>
+                  Sign out
+                </MenuItem>
+              </>
+            ) : (
+              <>
+                <MenuItem component={NavLink} to="/login" onClick={handleMenuClose}>
+                  <ListItemIcon>
+                    <LogIn className="h-4 w-4" />
+                  </ListItemIcon>
+                  Sign in
+                </MenuItem>
+                <MenuItem component={NavLink} to="/register" onClick={handleMenuClose}>
+                  <ListItemIcon>
+                    <UserPlus className="h-4 w-4" />
+                  </ListItemIcon>
+                  Create account
+                </MenuItem>
+              </>
+            )}
+          </Menu>
+        </div>
       </div>
     </header>
   );
@@ -336,41 +435,66 @@ const theme = createTheme({
 });
 
 export default function App() {
-  const currentYear = new Date().getFullYear();
+  const [sessionUser, setSessionUser] = useState(() => {
+    if (typeof window === 'undefined') return null
+    const raw = window.localStorage.getItem('sw-user')
+    if (!raw) return null
+    try {
+      return JSON.parse(raw)
+    } catch (error) {
+      console.warn('Failed to parse stored session', error)
+      return null
+    }
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (sessionUser) {
+      window.localStorage.setItem('sw-user', JSON.stringify(sessionUser))
+    } else {
+      window.localStorage.removeItem('sw-user')
+    }
+  }, [sessionUser])
+
+  const handleLoginSuccess = user => {
+    setSessionUser(user)
+  }
+
+  const handleSignOut = () => {
+    setSessionUser(null)
+  }
+
+  const currentYear = new Date().getFullYear()
+  const reroutePath = sessionUser?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <div className="min-h-screen bg-brand-radial text-slate-900">
-        <Nav />
+        <Nav session={sessionUser} onSignOut={handleSignOut} />
         <main className="pb-16 pt-6">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/ops" element={<ManageCollectionOpsPage />} />
             <Route path="/collector" element={<CollectorView />} />
+            <Route path="/schedule" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Schedule module coming soon.</div>} />
+            <Route path="/billing" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Billing features are being prepared.</div>} />
+            <Route path="/analytics" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Analytics dashboards are in progress.</div>} />
             <Route
-              path="/schedule"
-              element={
-                <div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">
-                  Schedule module coming soon.
-                </div>
-              }
+              path="/login"
+              element={sessionUser ? <Navigate to={reroutePath} replace /> : <LoginPage onLogin={handleLoginSuccess} />}
             />
             <Route
-              path="/billing"
-              element={
-                <div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">
-                  Billing features are being prepared.
-                </div>
-              }
+              path="/register"
+              element={sessionUser ? <Navigate to={reroutePath} replace /> : <RegisterPage onRegister={handleLoginSuccess} />}
             />
             <Route
-              path="/analytics"
-              element={
-                <div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">
-                  Analytics dashboards are in progress.
-                </div>
-              }
+              path="/userDashboard"
+              element={sessionUser ? <UserDashboard /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/adminDashboard"
+              element={sessionUser?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/login" replace />}
             />
           </Routes>
         </main>
