@@ -1,5 +1,5 @@
 // RouteMap.jsx
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -49,16 +49,21 @@ function FitBounds({ points }) {
  *  - plan: { stops:[{lat,lon,binId,estKg,visited}], ... }
  *  - depot: { lat, lon }
  */
+const DEFAULT_DEPOT = { lat: 6.927, lon: 79.861 };
+
 export default function RouteMap({ plan, depot }) {
+  const baseDepot = depot || plan?.depot || DEFAULT_DEPOT;
   const stops = plan?.stops ?? [];
   const poly = useMemo(() => {
-    if (!stops.length) return [];
-    const pts = [[depot.lat, depot.lon], ...stops.map(s => [s.lat, s.lon]), [depot.lat, depot.lon]];
+    if (!stops.length) {
+      return [[baseDepot.lat, baseDepot.lon]];
+    }
+    const pts = [[baseDepot.lat, baseDepot.lon], ...stops.map(s => [s.lat, s.lon]), [baseDepot.lat, baseDepot.lon]];
     return pts;
-  }, [stops, depot]);
+  }, [stops, baseDepot]);
 
   // center (fallback to depot)
-  const center = [depot.lat, depot.lon];
+  const center = [baseDepot.lat, baseDepot.lon];
 
   return (
     <div className="h-[420px] w-full overflow-hidden rounded-2xl ring-1 ring-slate-200">
@@ -69,12 +74,12 @@ export default function RouteMap({ plan, depot }) {
         />
 
         {/* Path depot → stops → depot */}
-        {poly.length >= 2 && (
+        {stops.length >= 1 && (
           <Polyline positions={poly} pathOptions={{ color: '#10b981', weight: 5, opacity: 0.8 }} />
         )}
 
         {/* Depot */}
-        <Marker position={[depot.lat, depot.lon]} icon={depotIcon()}>
+        <Marker position={[baseDepot.lat, baseDepot.lon]} icon={depotIcon()}>
           <Popup>Depot<br/>Start/End</Popup>
         </Marker>
 

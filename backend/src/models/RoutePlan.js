@@ -6,6 +6,7 @@ const schema = new Schema({
   date: Date,
   ward: String,
   truckId: String,
+  depot: { lat: Number, lon: Number },
   stops: [stop],
   loadKg: Number,
   distanceKm: Number
