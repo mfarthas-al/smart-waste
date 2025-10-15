@@ -139,66 +139,82 @@ const makeCollectionRecords = () => {
         role: 'regular',
       },
     ]);
-  console.log('✅ Seeded admin, collector, and resident users');
+    console.log('✅ Seeded admin, collector, and resident users');
 
-  const binDocs = makeBinRecords();
-  await WasteBin.insertMany(binDocs);
-  console.log(`✅ Seeded ${binDocs.length} bins across ${CITIES.length} cities`);
+    const binDocs = makeBinRecords();
+    await WasteBin.insertMany(binDocs);
+    console.log(`✅ Seeded ${binDocs.length} bins across ${CITIES.length} cities`);
 
-  const collectionDocs = makeCollectionRecords();
-  await WasteCollectionRecord.insertMany(collectionDocs);
-  console.log(`✅ Seeded ${collectionDocs.length} waste collection records for analytics`);
+    const collectionDocs = makeCollectionRecords();
+    await WasteCollectionRecord.insertMany(collectionDocs);
+    console.log(`✅ Seeded ${collectionDocs.length} waste collection records for analytics`);
 
-  const now = new Date();
-  const toDate = days => {
-    const d = new Date(now);
-    d.setDate(d.getDate() + days);
-    return d;
-  };
+    const now = new Date();
+    const toDate = days => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + days);
+      return d;
+    };
 
-  const billingDocs = [
-    {
-      userId: residentUser._id,
-      invoiceNumber: 'INV-2025-001',
-  description: 'Residential waste service - August 2025',
-      amount: 1850,
-      currency: 'LKR',
-      billingPeriodStart: toDate(-60),
-      billingPeriodEnd: toDate(-30),
-      generatedAt: toDate(-28),
-      dueDate: toDate(-5),
-      status: 'unpaid',
-    },
-    {
-      userId: residentUser._id,
-      invoiceNumber: 'INV-2025-002',
-  description: 'Residential waste service - September 2025',
-      amount: 1925,
-      currency: 'LKR',
-      billingPeriodStart: toDate(-30),
-      billingPeriodEnd: toDate(0),
-      generatedAt: toDate(-2),
-      dueDate: toDate(14),
-      status: 'unpaid',
-    },
-    {
-      userId: residentUser._id,
-      invoiceNumber: 'INV-2025-000',
-  description: 'Residential waste service - July 2025',
-      amount: 1780,
-      currency: 'LKR',
-      billingPeriodStart: toDate(-90),
-      billingPeriodEnd: toDate(-60),
-      generatedAt: toDate(-58),
-      dueDate: toDate(-30),
-      status: 'paid',
-      paidAt: toDate(-28),
-      paymentMethod: 'card',
-    },
-  ];
+    const billingDocs = [
+      {
+        userId: residentUser._id,
+        invoiceNumber: 'INV-2025-001',
+        description: 'Residential waste service - August 2025',
+        amount: 1850,
+        currency: 'LKR',
+        billingPeriodStart: toDate(-60),
+        billingPeriodEnd: toDate(-30),
+        generatedAt: toDate(-28),
+        dueDate: toDate(-5),
+        status: 'unpaid',
+      },
+      {
+        userId: residentUser._id,
+        invoiceNumber: 'INV-2025-002',
+        description: 'Residential waste service - September 2025',
+        amount: 1925,
+        currency: 'LKR',
+        billingPeriodStart: toDate(-30),
+        billingPeriodEnd: toDate(0),
+        generatedAt: toDate(-2),
+        dueDate: toDate(14),
+        status: 'unpaid',
+      },
+      {
+        userId: residentUser._id,
+        invoiceNumber: 'INV-2025-000',
+        description: 'Residential waste service - July 2025',
+        amount: 1780,
+        currency: 'LKR',
+        billingPeriodStart: toDate(-90),
+        billingPeriodEnd: toDate(-60),
+        generatedAt: toDate(-58),
+        dueDate: toDate(-30),
+        status: 'paid',
+        paidAt: toDate(-28),
+        paymentMethod: 'card',
+      },
+    ];
 
-  await Bill.insertMany(billingDocs);
-  console.log(`✅ Seeded ${billingDocs.length} resident billing records`);
+    const insertedBills = await Bill.insertMany(billingDocs);
+    console.log(`✅ Seeded ${billingDocs.length} resident billing records`);
+
+    const paidBill = insertedBills.find(doc => doc.status === 'paid');
+    if (paidBill) {
+      await PaymentTransaction.create({
+        billId: paidBill._id,
+        userId: paidBill.userId,
+        amount: paidBill.amount,
+        currency: paidBill.currency,
+        status: 'success',
+        paymentMethod: paidBill.paymentMethod || 'card',
+        stripeSessionId: 'seed-session',
+        stripePaymentIntentId: 'seed-intent',
+        receiptUrl: 'https://example.com/demo-receipt.pdf',
+      });
+      console.log('✅ Seeded historical payment transaction for paid invoice');
+    }
 
   } catch (e) {
     console.error('❌ Seed failed:', e.message);

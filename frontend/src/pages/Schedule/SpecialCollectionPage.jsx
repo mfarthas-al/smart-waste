@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography,} from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography,} from '@mui/material'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -27,6 +27,7 @@ export default function SpecialCollectionPage({ session }) {
     const [feedback, setFeedback] = useState(null)
     const [bookingLoading, setBookingLoading] = useState(false)
     const [error, setError] = useState(null)
+    const [paymentDialog, setPaymentDialog] = useState({ open: false, slot: null })
 
     const isAuthenticated = Boolean(session?.id || session?._id || session?.email)
 
@@ -127,12 +128,12 @@ export default function SpecialCollectionPage({ session }) {
         }
     }
 
-    const handleConfirmSlot = async slot => {
+    const submitBooking = async ({ slot, paymentStatus }) => {
         if (!availability) return
         setBookingLoading(true)
         setError(null)
 
-        const paymentReference = availability.payment?.required
+        const paymentReference = availability.payment?.required && paymentStatus === 'success'
             ? `PAY-${Date.now()}`
             : undefined
 
@@ -142,8 +143,15 @@ export default function SpecialCollectionPage({ session }) {
             quantity: Number(form.quantity),
             preferredDateTime: form.preferredDateTime,
             slotId: slot.slotId,
-            paymentStatus: availability.payment?.required ? 'success' : undefined,
+            paymentStatus,
             paymentReference,
+        }
+
+        if (!paymentStatus) {
+            delete payload.paymentStatus
+        }
+        if (!paymentReference) {
+            delete payload.paymentReference
         }
 
         try {
@@ -160,10 +168,29 @@ export default function SpecialCollectionPage({ session }) {
             setAvailability(null)
             setForm(() => ({ ...initialForm, itemType: form.itemType }))
             setRequests(prev => [data.request, ...prev])
+            setPaymentDialog({ open: false, slot: null })
         } catch (err) {
             setError(err.message)
         } finally {
             setBookingLoading(false)
+        }
+    }
+
+    const handleConfirmSlot = slot => {
+        if (!availability) return
+        if (availability.payment?.required) {
+            setPaymentDialog({ open: true, slot })
+        } else {
+            submitBooking({ slot })
+        }
+    }
+
+    const handlePaymentDecision = async outcome => {
+        if (outcome === 'success' && paymentDialog.slot) {
+            await submitBooking({ slot: paymentDialog.slot, paymentStatus: 'success' })
+        } else {
+            setPaymentDialog({ open: false, slot: null })
+            setFeedback({ type: 'info', message: 'Payment was cancelled. Your slot remains unbooked.' })
         }
     }
 
@@ -392,6 +419,33 @@ export default function SpecialCollectionPage({ session }) {
                         </CardContent>
                     </Card>
                 )}
+
+                <Dialog
+                    open={paymentDialog.open}
+                    onClose={() => handlePaymentDecision('cancel')}
+                    fullWidth
+                    maxWidth="sm"
+                >
+                    <DialogTitle>Complete payment</DialogTitle>
+                    <DialogContent dividers>
+                        <Stack spacing={2}>
+                            <Typography variant="body1">
+                                Pay LKR {availability?.payment?.amount ? availability.payment.amount.toLocaleString() : '0'} to confirm your special pickup slot.
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                                This simulated payment step represents the secure PaymentUI residents will use during the pilot. Choose “Complete payment” to proceed or “Cancel” to abandon the transaction.
+                            </Typography>
+                        </Stack>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => handlePaymentDecision('cancel')} disabled={bookingLoading}>
+                            Cancel
+                        </Button>
+                        <Button variant="contained" onClick={() => handlePaymentDecision('success')} disabled={bookingLoading}>
+                            {bookingLoading ? 'Processing…' : 'Complete payment'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
             </Stack>
         </div>
     )

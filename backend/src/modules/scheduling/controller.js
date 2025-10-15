@@ -2,6 +2,10 @@ const { z } = require('zod');
 const User = require('../../models/User');
 const SpecialCollectionRequest = require('../../models/SpecialCollectionRequest');
 const SpecialCollectionPayment = require('../../models/SpecialCollectionPayment');
+const {
+  sendSpecialCollectionConfirmation,
+  notifyAuthorityOfSpecialPickup,
+} = require('../../services/mailer');
 
 const allowedItems = [
   {
@@ -262,10 +266,7 @@ async function confirmBooking(req, res, next) {
       paymentStatus: payment.required ? 'success' : 'not-required',
       paymentAmount: payment.amount,
       paymentReference: payment.required ? payload.paymentReference : undefined,
-      notifications: {
-        residentSentAt: new Date(),
-        authoritySentAt: new Date(),
-      },
+      notifications: {},
     });
 
     if (payment.required) {
@@ -278,6 +279,41 @@ async function confirmBooking(req, res, next) {
         provider: 'internal-simulator',
         metadata: { itemType: payload.itemType, quantity: payload.quantity },
       });
+    }
+
+    try {
+      const [residentNotice, authorityNotice] = await Promise.all([
+        sendSpecialCollectionConfirmation({
+          resident: { email: user.email, name: user.name },
+          slot,
+          request: requestDoc,
+        }).catch(error => {
+          console.warn('⚠️ Failed to email resident about special collection', error);
+          return { sent: false };
+        }),
+        notifyAuthorityOfSpecialPickup({ request: requestDoc, slot }).catch(error => {
+          console.warn('⚠️ Failed to email authority about special collection', error);
+          return { sent: false };
+        }),
+      ]);
+
+      const notificationUpdates = {};
+      if (residentNotice.sent) {
+        notificationUpdates['notifications.residentSentAt'] = residentNotice.sentAt || new Date();
+      }
+      if (authorityNotice.sent) {
+        notificationUpdates['notifications.authoritySentAt'] = authorityNotice.sentAt || new Date();
+      }
+
+      if (Object.keys(notificationUpdates).length) {
+        await SpecialCollectionRequest.updateOne({ _id: requestDoc._id }, { $set: notificationUpdates });
+        if (!requestDoc.notifications) {
+          requestDoc.notifications = {};
+        }
+        Object.assign(requestDoc.notifications, notificationUpdates);
+      }
+    } catch (notificationError) {
+      console.warn('⚠️ Special collection notifications error', notificationError);
     }
 
     return res.status(201).json({

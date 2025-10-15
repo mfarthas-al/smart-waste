@@ -28,7 +28,10 @@ export default function LoginPage({ onLogin }) {
 
             const payload = await response.json()
             if (!response.ok) {
-                throw new Error(payload.message || 'Login failed')
+                const lockNotice = payload.lockUntil
+                    ? ` Try again after ${new Date(payload.lockUntil).toLocaleString('en-GB')}.`
+                    : ''
+                throw new Error((payload.message || 'Login failed') + lockNotice)
             }
 
             setFeedback({ type: 'success', message: payload.message })

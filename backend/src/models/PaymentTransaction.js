@@ -14,6 +14,7 @@ const transactionSchema = new Schema({
   },
   stripeSessionId: { type: String, index: true },
   stripePaymentIntentId: { type: String },
+  receiptUrl: { type: String },
   failureReason: { type: String },
   rawGatewayResponse: { type: Schema.Types.Mixed },
 }, { timestamps: true });

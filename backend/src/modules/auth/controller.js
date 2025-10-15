@@ -33,6 +33,13 @@ async function login(req, res, next) {
     if (error.code === 'ACCOUNT_INACTIVE') {
       return res.status(403).json({ ok: false, message: error.message });
     }
+    if (error.code === 'ACCOUNT_LOCKED') {
+      return res.status(423).json({
+        ok: false,
+        message: error.message,
+        lockUntil: error.lockUntil,
+      });
+    }
     return next(error);
   }
 }

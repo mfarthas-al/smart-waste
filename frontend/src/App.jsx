@@ -11,6 +11,8 @@ import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
 import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 import SpecialCollectionPage from './pages/Schedule/SpecialCollectionPage.jsx'
 import ReportsPage from './pages/Analytics/ReportsPage.jsx'
+import BillingPage from './pages/Billing/BillingPage.jsx'
+import CheckoutResultPage from './pages/Billing/CheckoutResultPage.jsx'
 
 const baseNavLinks = [
   { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
@@ -488,7 +490,14 @@ export default function App() {
               path="/schedule"
               element={sessionUser ? <SpecialCollectionPage session={sessionUser} /> : <Navigate to="/login" replace />}
             />
-            <Route path="/billing" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Billing features are being prepared.</div>} />
+            <Route
+              path="/billing"
+              element={sessionUser ? <BillingPage session={sessionUser} /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/billing/checkout"
+              element={sessionUser ? <CheckoutResultPage session={sessionUser} /> : <Navigate to="/login" replace />}
+            />
             <Route
               path="/analytics"
               element={sessionUser?.role === 'admin' ? <ReportsPage session={sessionUser} /> : <Navigate to={sessionUser ? '/userDashboard' : '/login'} replace />}

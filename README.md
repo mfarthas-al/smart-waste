@@ -18,10 +18,10 @@ Smart Waste LK is a proof-of-concept platform for Sri Lankan municipalities to o
 - **Tooling**: Nodemon for local backend reloads, Jest + Supertest placeholders, PostCSS, ESLint, dotenv-based configuration.
 
 ## Recent Enhancements
-- **Authentication refresh**: Login and registration flows now enforce active accounts, hash passwords with bcrypt, and route users to role-aware dashboards.
-- **Special collection flow**: `/api/schedules/special/*` endpoints expose item policies, availability calculation, booking confirmation, and request history. The accompanying React page (`frontend/src/pages/Schedule/SpecialCollectionPage.jsx`) presents residents with a guided booking experience and simulated payment capture.
+- **Authentication refresh**: Login and registration flows now enforce active accounts, hash passwords with bcrypt, lock accounts for 15 minutes after three failed attempts, and route users to role-aware dashboards.
+- **Special collection flow**: `/api/schedules/special/*` endpoints expose item policies, availability calculation, booking confirmation, and request history. The React page (`frontend/src/pages/Schedule/SpecialCollectionPage.jsx`) guides residents through slot selection, simulates the payment UI, and dispatches confirmation emails to both residents and the field operations inbox.
 - **Waste analytics suite**: Admin-only `/api/analytics/config` and `/api/analytics/report` endpoints serve filter metadata and aggregated waste statistics (household, regional, recycling splits). The React Reports page (`frontend/src/pages/Analytics/ReportsPage.jsx`) offers chart/table visualisations with PDF and Excel exports powered by `jspdf` and `xlsx`.
-- **Resident billing and payments**: `/api/billing/*` endpoints list outstanding invoices, create Stripe Checkout sessions, and sync payment status back to MongoDB. Bills and gateway transactions persist via the new `Bill` and `PaymentTransaction` models. Seed data now provisions unpaid and historical invoices for the demo resident.
+- **Resident billing and payments**: `/api/billing/*` endpoints list outstanding invoices, create Stripe Checkout sessions, sync payment status back to MongoDB, and surface digital receipts. The new React "My Bills" workspace (`frontend/src/pages/Billing/BillingPage.jsx`) launches Stripe checkout, surfaces cancellations/failures, and exposes downloadable receipts via `/api/billing/transactions/:transactionId/receipt`.
 
 Run `npm install` inside `frontend` to pull the new report export dependencies, then `npm run lint` to ensure the UI compiles cleanly.
 
@@ -52,10 +52,18 @@ PORT=4000
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-host>/<database>?retryWrites=true&w=majority
 NODE_ENV=development
 STRIPE_SECRET_KEY=sk_test_xxx
+STRIPE_PAYMENT_METHODS=card,link
+COLLECTION_AUTHORITY_EMAIL=ops-team@smartwaste.lk
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASS=secret
+SMTP_FROM="Smart Waste Billing" <no-reply@smartwaste.lk>
 ```
 
 > Keep credentials out of version control. The project ships with a `.env` file for convenience; replace the URI with your own cluster URL before deploying.
 > Stripe integration is optional for local development; omit `STRIPE_SECRET_KEY` to disable checkout (billing endpoints will return configuration errors instead of failing silently).
+> SMTP settings and `COLLECTION_AUTHORITY_EMAIL` are optional. When provided, the platform emails residents and operations staff after special collections are booked and sends receipts for successful bill payments.
 
 ## Getting Started
 
@@ -110,11 +118,13 @@ npm run dev
 | GET    | `/api/billing/bills` | Returns outstanding and paid bills for the authenticated resident. |
 | POST   | `/api/billing/checkout` | Creates a Stripe Checkout session for a selected bill and returns the hosted payment URL. |
 | GET    | `/api/billing/checkout/:sessionId` | Syncs Stripe payment status and updates local bill and transaction records. |
+| GET    | `/api/billing/transactions/:transactionId/receipt` | Returns a structured receipt (with Stripe receipt URL when available) for auditing and downloads. |
 
 ## Frontend Highlights
 - **Manage Collection Ops**: Control-centre view to run optimisations, review key metrics, and brief crews.
 - **Collector View**: Field-friendly checklist that syncs with the API, tracks progress, and handles offline-friendly error states.
 - **Special Collections**: Resident-facing booking flow that validates slots, handles simulated payments, and surfaces history.
+- **My Bills**: Resident workspace to view outstanding invoices, launch Stripe Checkout, track cancellations, and download receipts once paid.
 - **Reports & Analytics**: Admin dashboard to generate charts/tables, toggle sections, and export PDF/Excel snapshots.
 - Shared Material UI theme aligned with Tailwind colour tokens for consistent styling.
 
