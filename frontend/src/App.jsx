@@ -9,6 +9,8 @@ import LoginPage from './pages/Auth/LoginPage.jsx'
 import RegisterPage from './pages/Auth/RegisterPage.jsx'
 import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
 import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
+import SpecialCollectionPage from './pages/Schedule/SpecialCollectionPage.jsx'
+import ReportsPage from './pages/Analytics/ReportsPage.jsx'
 
 const baseNavLinks = [
   { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
@@ -20,7 +22,12 @@ const baseNavLinks = [
 
 function Nav({ session, onSignOut }) {
   const [menuAnchor, setMenuAnchor] = useState(null)
-  const navLinks = [...baseNavLinks]
+  const navLinks = baseNavLinks.filter(link => {
+    if (link.to === '/analytics') {
+      return session?.role === 'admin'
+    }
+    return true
+  })
   if (session?.role === 'admin') {
     navLinks.push({
       to: '/adminDashboard',
@@ -477,9 +484,15 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/ops" element={<ManageCollectionOpsPage />} />
             <Route path="/collector" element={<CollectorView />} />
-            <Route path="/schedule" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Schedule module coming soon.</div>} />
+            <Route
+              path="/schedule"
+              element={sessionUser ? <SpecialCollectionPage session={sessionUser} /> : <Navigate to="/login" replace />}
+            />
             <Route path="/billing" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Billing features are being prepared.</div>} />
-            <Route path="/analytics" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Analytics dashboards are in progress.</div>} />
+            <Route
+              path="/analytics"
+              element={sessionUser?.role === 'admin' ? <ReportsPage session={sessionUser} /> : <Navigate to={sessionUser ? '/userDashboard' : '/login'} replace />}
+            />
             <Route
               path="/login"
               element={sessionUser ? <Navigate to={reroutePath} replace /> : <LoginPage onLogin={handleLoginSuccess} />}

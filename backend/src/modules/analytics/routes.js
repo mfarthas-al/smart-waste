@@ -1,3 +1,7 @@
 const router = require('express').Router();
-router.get('/summary', (_req, res) => res.json({}));
+const controller = require('./controller');
+
+router.get('/config', controller.getConfig);
+router.post('/report', controller.generateReport);
+
 module.exports = router;
