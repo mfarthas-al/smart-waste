@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material'
 import { Banknote, CreditCard, Download, ExternalLink, Receipt, RefreshCcw, Wallet } from 'lucide-react'
 
 function formatCurrency(amount, currency = 'LKR') {
@@ -297,14 +297,19 @@ export default function BillingPage({ session, variant = 'page' }) {
               Review outstanding invoices, launch secure Stripe Checkout, and download payment receipts once settled.
             </Typography>
           </Box>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshCcw size={18} />}
-            onClick={loadBills}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <Tooltip title="Refresh billing data">
+            <span>
+              <IconButton
+                onClick={loadBills}
+                disabled={loading}
+                color="primary"
+                size="medium"
+                aria-label="Refresh billing data"
+              >
+                {loading ? <CircularProgress size={20} /> : <RefreshCcw size={18} />}
+              </IconButton>
+            </span>
+          </Tooltip>
         </Stack>
 
         {error && (
