@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -30,6 +30,21 @@ const PAYMENT_STATUSES = {
   pending: { label: 'Payment pending', color: 'warning' },
   failed: { label: 'Payment failed', color: 'error' },
   'not-required': { label: 'No payment required', color: 'default' },
+}
+
+const currencyFormatter = new Intl.NumberFormat('en-LK', {
+  style: 'currency',
+  currency: 'LKR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+const TAX_RATE_PERCENT = 3
+
+function formatCurrency(amount) {
+  const value = Number(amount)
+  if (!Number.isFinite(value)) return currencyFormatter.format(0)
+  return currencyFormatter.format(value)
 }
 
 function toLocalDateValue(date) {
@@ -359,6 +374,7 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
   const payment = availability?.payment
   const totalWeightKg = Number(payment?.totalWeightKg ?? 0)
   const weightChargeAmount = Number(payment?.weightCharge ?? 0)
+  const taxAmount = Number(payment?.taxCharge ?? 0)
 
   if (!availability) return null
 
@@ -399,7 +415,7 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
                         </Typography>
                         {payment?.required ? (
                           <Alert severity="info" icon={<Info size={18} />}>
-                            Payment required: LKR {Number(payment.amount ?? 0).toLocaleString()}.
+                            Payment required: {formatCurrency(payment.amount)}.
                             {totalWeightKg > 0 ? (
                               <>
                                 {' '}
@@ -409,7 +425,13 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
                             {weightChargeAmount > 0 ? (
                               <>
                                 {' '}
-                                Weight surcharge included: LKR {weightChargeAmount.toLocaleString()}.
+                                Weight surcharge included: {formatCurrency(weightChargeAmount)}.
+                              </>
+                            ) : null}
+                            {taxAmount > 0 ? (
+                              <>
+                                {' '}
+                                Taxes applied: {formatCurrency(taxAmount)}.
                               </>
                             ) : null}
                             {' '}
@@ -439,6 +461,87 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
                 </Grid>
               ))}
             </Grid>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  )
+}
+
+function SummaryRow({ label, amount, helper, prefix = '' }) {
+  return (
+    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={3}>
+      <Stack spacing={0.5}>
+        <Typography variant="body2" fontWeight={600}>
+          {label}
+        </Typography>
+        {helper ? (
+          <Typography variant="caption" color="text.secondary">
+            {helper}
+          </Typography>
+        ) : null}
+      </Stack>
+      <Typography variant="body2" fontWeight={600} color="text.primary">
+        {prefix}
+        {formatCurrency(amount)}
+      </Typography>
+    </Stack>
+  )
+}
+
+function PaymentSummary({ payment, showBreakdown = false }) {
+  const subtotal = Number(payment?.baseCharge ?? 0)
+  const extraCharges = Number(payment?.weightCharge ?? 0)
+  const taxCharge = Number(payment?.taxCharge ?? 0)
+  const total = Number(payment?.amount ?? 0)
+
+  return (
+    <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
+      <CardContent>
+        <Stack spacing={2.5}>
+          <Typography variant="h6" fontWeight={600}>
+            Payment details
+          </Typography>
+
+          {payment ? (
+            <Stack spacing={2}>
+              <SummaryRow label="Subtotal" amount={subtotal} />
+              <SummaryRow
+                label="Extra charges"
+                amount={extraCharges}
+                prefix="+ "
+                helper={showBreakdown ? 'Extra charges are based on Approx. Weight' : undefined}
+              />
+              <SummaryRow
+                label="Tax"
+                amount={taxCharge}
+                prefix="+ "
+                helper={`Municipal levy (${TAX_RATE_PERCENT}%)`}
+              />
+
+              <Divider flexItem sx={{ my: 1 }} />
+
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Total
+                </Typography>
+                <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+                  {formatCurrency(total)}
+                </Typography>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                (Subtotal + Extra charges + Tax)
+              </Typography>
+              {!payment.required || total <= 0 ? (
+                <Alert severity="success" icon={<CheckCircle2 size={18} />}>
+                  No payment required for this request.
+                </Alert>
+              ) : null}
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Enter your request details and check availability to see the estimated charges for your pickup.
+            </Typography>
           )}
         </Stack>
       </CardContent>
@@ -881,6 +984,11 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           availabilityLoading={availabilityLoading || configLoading}
           isAuthenticated={isAuthenticated}
           onRequireAuth={ensureAuthenticated}
+        />
+
+        <PaymentSummary
+          payment={availability?.payment}
+          showBreakdown={form.approxWeight !== '' && Number(form.quantity) > 0}
         />
 
         <AvailabilitySection

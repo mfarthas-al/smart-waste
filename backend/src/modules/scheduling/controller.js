@@ -65,6 +65,8 @@ const SLOT_CONFIG = {
   timezone: 'Asia/Colombo',
 };
 
+const TAX_RATE = 0.03; // 3% municipal service levy
+
 const approxWeightSchema = z.union([
   z.number().positive('Approximate weight must be greater than zero'),
   z.null(),
@@ -234,18 +236,24 @@ function calculatePayment(itemPolicy, quantity, approxWeightPerItemKg) {
   }
 
   const roundedWeightCharge = Math.round(weightCharge * 100) / 100;
-  const roundedAmount = Math.round(amount * 100) / 100;
-  const baseChargeRaw = Math.max(roundedAmount - roundedWeightCharge, 0);
+  const baseChargeRaw = Math.max(amount - weightCharge, 0);
   const roundedBaseCharge = Math.round(baseChargeRaw * 100) / 100;
 
+  const taxableBase = Math.max(roundedBaseCharge + roundedWeightCharge, 0);
+  const taxChargeRaw = taxableBase * TAX_RATE;
+  const roundedTaxCharge = Math.round(taxChargeRaw * 100) / 100;
+
   const roundedTotalWeight = Math.round(totalWeightKg * 10) / 10;
+  const grossTotal = taxableBase + roundedTaxCharge;
+  const roundedTotal = Math.round(grossTotal * 100) / 100;
 
   return {
-    required: roundedAmount > 0,
-    amount: roundedAmount,
+    required: roundedTotal > 0,
+    amount: roundedTotal,
     totalWeightKg: roundedTotalWeight,
     weightCharge: roundedWeightCharge,
     baseCharge: roundedBaseCharge,
+    taxCharge: roundedTaxCharge,
   };
 }
 
@@ -324,6 +332,7 @@ async function finaliseBooking({
         totalWeightKg: payment.totalWeightKg,
         weightCharge: payment.weightCharge,
         baseCharge: payment.baseCharge,
+        taxCharge: payment.taxCharge,
       },
     };
 
@@ -579,6 +588,7 @@ async function startCheckout(req, res, next) {
   totalWeightKg: payment.totalWeightKg != null ? String(payment.totalWeightKg) : undefined,
   weightCharge: payment.weightCharge != null ? String(payment.weightCharge) : undefined,
   baseCharge: payment.baseCharge != null ? String(payment.baseCharge) : undefined,
+      taxCharge: payment.taxCharge != null ? String(payment.taxCharge) : undefined,
   specialNotes: payload.specialNotes,
     };
 
