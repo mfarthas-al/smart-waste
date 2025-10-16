@@ -196,8 +196,11 @@ async function checkAvailability(req, res, next) {
     const preferredDayEnd = new Date(preferredDayStart);
     preferredDayEnd.setDate(preferredDayEnd.getDate() + 1);
 
+    const now = new Date();
     const sameDayCandidates = candidates.filter(candidate => (
-      candidate.start >= preferredDayStart && candidate.start < preferredDayEnd
+      candidate.start >= preferredDayStart
+      && candidate.start < preferredDayEnd
+      && candidate.start >= now
     ));
     const availableSlots = await attachAvailability(sameDayCandidates);
     const payment = calculatePayment(policy, payload.quantity);
@@ -248,7 +251,8 @@ async function confirmBooking(req, res, next) {
     }
 
     const slotCandidates = generateCandidateSlots(preferred, SLOT_CONFIG);
-    const slot = slotCandidates.find(candidate => candidate.slotId === payload.slotId);
+  const now = new Date();
+  const slot = slotCandidates.find(candidate => candidate.slotId === payload.slotId && candidate.start >= now);
     if (!slot) {
       return res.status(400).json({ ok: false, message: 'Selected slot is no longer available.' });
     }
