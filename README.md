@@ -125,3 +125,21 @@ npm run dev
 2. Back the analytics, billing, and scheduling modules with real datasets.
 3. Add authentication, role-based access, and audit logs.
 4. Extend automated test coverage for service and routing logic.
+
+## Design Critique SPA (Report.html)
+
+A standalone, static "Design Critique & Improvement" single-page report is included at the repository root as `Report.html`. It demonstrates proposed UI/UX and functional improvements with interactive Chart.js visualisations (no SVG/Mermaid). This is a self-contained, read-only artifact useful for stakeholder reviews.
+
+Files:
+- Report.html — top-level file: `./Report.html`
+
+How to run / view the report (pick one)
+
+- Option A — Quick static server (recommended)
+  PowerShell (from repo root):
+  ```powershell
+  # Using Python 3
+  python -m http.server 8080
+  # or with Node (no install required)
+  npx http-server . -p 8080
+  ```
