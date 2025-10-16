@@ -36,13 +36,6 @@ function Nav({ session, onSignOut }) {
       description: 'Administration controls',
       icon: ShieldCheck,
     })
-  } else if (session?.role === 'regular') {
-    navLinks.push({
-      to: '/userDashboard',
-      label: 'Crew Desk',
-      description: 'Your field assignments',
-      icon: UserCircle,
-    })
   }
 
   const menuOpen = Boolean(menuAnchor)
