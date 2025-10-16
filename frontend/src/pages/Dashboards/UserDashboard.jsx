@@ -1,5 +1,6 @@
 import { Card, CardContent, Chip, Grid, Stack, Typography } from '@mui/material'
 import { CalendarClock, ClipboardCheck, MapPinned } from 'lucide-react'
+import BillingPage from '../Billing/BillingPage.jsx'
 
 const quickStats = [
   {
@@ -22,7 +23,7 @@ const quickStats = [
   },
 ]
 
-export default function UserDashboard() {
+export default function UserDashboard({ session = null }) {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-12">
       <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={3}>
@@ -68,6 +69,8 @@ export default function UserDashboard() {
           Review the assigned route, confirm vehicle inspection, and update bin status after each pickup. Upcoming updates will surface live notifications from the operations control room.
         </Typography>
       </div>
+
+      <BillingPage session={session} variant="embedded" />
     </div>
   )
 }

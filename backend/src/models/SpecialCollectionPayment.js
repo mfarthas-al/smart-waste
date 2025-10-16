@@ -1,7 +1,7 @@
 const { Schema, model, Types } = require('mongoose');
 
 const paymentSchema = new Schema({
-  requestId: { type: Types.ObjectId, ref: 'SpecialCollectionRequest', required: true },
+  requestId: { type: Types.ObjectId, ref: 'SpecialCollectionRequest' },
   userId: { type: Types.ObjectId, ref: 'User', required: true },
   amount: { type: Number, required: true, min: 0 },
   currency: { type: String, default: 'LKR' },
@@ -12,6 +12,8 @@ const paymentSchema = new Schema({
   },
   provider: { type: String, default: 'internal' },
   reference: { type: String },
+  stripeSessionId: { type: String, index: true },
+  slotId: { type: String, index: true },
   metadata: { type: Schema.Types.Mixed },
 }, { timestamps: true });
 
