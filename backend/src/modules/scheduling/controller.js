@@ -50,12 +50,29 @@ const SLOT_CONFIG = {
   timezone: 'Asia/Colombo',
 };
 
+const approxWeightSchema = z.union([
+  z.number().positive('Approximate weight must be greater than zero'),
+  z.null(),
+  z.undefined(),
+]);
+
+const residentDetailsSchema = {
+  residentName: z.string().min(1, 'Resident name is required'),
+  ownerName: z.string().min(1, "Owner's name is required"),
+  address: z.string().min(1, 'Address is required'),
+  district: z.string().min(1, 'District is required'),
+  email: z.string().email('A valid email is required'),
+  phone: z.string().min(7, 'A valid phone number is required'),
+  approxWeight: approxWeightSchema,
+  specialNotes: z.string().max(1000).optional(),
+};
+
 const availabilitySchema = z.object({
   userId: z.string().min(1, 'User id is required'),
   itemType: z.string().min(1, 'Item type is required'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
   preferredDateTime: z.string().datetime().or(z.date()),
-});
+}).extend(residentDetailsSchema);
 
 const bookingSchema = availabilitySchema.extend({
   slotId: z.string().min(1, 'Slot id is required'),
@@ -199,6 +216,16 @@ async function finaliseBooking({
     userId: user._id,
     userEmail: user.email,
     userName: user.name,
+    residentName: payload.residentName?.trim() || user.name,
+    ownerName: payload.ownerName?.trim() || payload.residentName?.trim() || user.name,
+    address: payload.address?.trim(),
+    district: payload.district?.trim(),
+    contactEmail: payload.email?.trim() || user.email,
+    contactPhone: payload.phone?.trim(),
+    approxWeightKg: typeof payload.approxWeight === 'number' && Number.isFinite(payload.approxWeight)
+      ? payload.approxWeight
+      : undefined,
+    specialNotes: payload.specialNotes?.trim(),
     itemType: payload.itemType,
     quantity: payload.quantity,
     preferredDateTime: toDate(payload.preferredDateTime),
@@ -227,6 +254,14 @@ async function finaliseBooking({
         itemType: payload.itemType,
         quantity: payload.quantity,
         preferredDateTime: payload.preferredDateTime,
+        residentName: payload.residentName,
+        ownerName: payload.ownerName,
+        address: payload.address,
+        district: payload.district,
+        email: payload.email,
+        phone: payload.phone,
+        approxWeight: payload.approxWeight,
+        specialNotes: payload.specialNotes,
       },
     };
 
@@ -378,6 +413,14 @@ async function confirmBooking(req, res, next) {
       itemType: payload.itemType,
       quantity: payload.quantity,
       preferredDateTime: payload.preferredDateTime,
+      residentName: payload.residentName,
+      ownerName: payload.ownerName,
+      address: payload.address,
+      district: payload.district,
+      email: payload.email,
+      phone: payload.phone,
+      approxWeight: payload.approxWeight ?? undefined,
+      specialNotes: payload.specialNotes,
     };
 
     const requestDoc = await finaliseBooking({
@@ -464,7 +507,23 @@ async function startCheckout(req, res, next) {
       quantity: String(payload.quantity),
       preferredDateTime: preferred.toISOString(),
       slotId: slot.slotId,
+      residentName: payload.residentName,
+      ownerName: payload.ownerName,
+      address: payload.address,
+      district: payload.district,
+      email: payload.email,
+      phone: payload.phone,
+      approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
+      specialNotes: payload.specialNotes,
     };
+
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key] === undefined || metadata[key] === null) {
+        delete metadata[key];
+      } else {
+        metadata[key] = String(metadata[key]).slice(0, 500);
+      }
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -566,9 +625,30 @@ async function syncCheckout(req, res, next) {
       itemType: metadata.itemType,
       quantity: quantityValue,
       preferredDateTime: metadata.preferredDateTime,
+      residentName: metadata.residentName,
+      ownerName: metadata.ownerName,
+      address: metadata.address,
+      district: metadata.district,
+      email: metadata.email,
+      phone: metadata.phone,
+      approxWeight: metadata.approxWeight ? Number(metadata.approxWeight) : undefined,
+      specialNotes: metadata.specialNotes,
     };
 
-    if (!payload.itemType || Number.isNaN(payload.quantity) || payload.quantity < 1 || !payload.preferredDateTime || !metadata.slotId) {
+    if (
+      !payload.itemType
+      || Number.isNaN(payload.quantity)
+      || payload.quantity < 1
+      || !payload.preferredDateTime
+      || !metadata.slotId
+  || !payload.residentName
+  || !payload.ownerName
+      || !payload.address
+      || !payload.district
+      || !payload.email
+      || !payload.phone
+      || (payload.approxWeight !== undefined && (Number.isNaN(payload.approxWeight) || payload.approxWeight <= 0))
+    ) {
       await SpecialCollectionPayment.updateOne({ _id: paymentDoc._id }, {
         $set: { status: 'failed', reference: paymentIntent?.id || sessionId },
       });

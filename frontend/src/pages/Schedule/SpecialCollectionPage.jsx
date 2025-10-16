@@ -4,9 +4,18 @@ import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck
 import { useNavigate } from 'react-router-dom'
 
 const initialFormState = {
+  residentName: '',
+  ownerName: '',
+  address: '',
+  district: '',
+  email: '',
+  phone: '',
   itemType: '',
+  preferredDate: '',
+  preferredTime: '',
+  approxWeight: '',
   quantity: 1,
-  preferredDateTime: '',
+  specialNotes: '',
 }
 
 const REQUEST_STATUSES = {
@@ -23,10 +32,16 @@ const PAYMENT_STATUSES = {
   'not-required': { label: 'No payment required', color: 'default' },
 }
 
-function toLocalInputValue(date) {
-  const offsetMinutes = date.getTimezoneOffset()
-  const local = new Date(date.getTime() - offsetMinutes * 60_000)
-  return local.toISOString().slice(0, 16)
+function toLocalDateValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function combineDateAndTime(date, time) {
+  if (!date || !time) return ''
+  return `${date}T${time}`
 }
 
 function serializeDateTime(value) {
@@ -170,6 +185,67 @@ function RequestForm({
           </Typography>
 
           <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Resident name"
+                name="residentName"
+                value={form.residentName}
+                onChange={onChange}
+                required
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Owner's name"
+                name="ownerName"
+                value={form.ownerName}
+                onChange={onChange}
+                required
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Email"
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={onChange}
+                required
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Phone"
+                name="phone"
+                value={form.phone}
+                onChange={onChange}
+                required
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Address"
+                name="address"
+                value={form.address}
+                onChange={onChange}
+                required
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="District"
+                name="district"
+                value={form.district}
+                onChange={onChange}
+                required
+                fullWidth
+              />
+            </Grid>
             <Grid item xs={12} md={4}>
               <FormControl fullWidth required>
                 <InputLabel id="itemType-label">Item type</InputLabel>
@@ -191,6 +267,18 @@ function RequestForm({
             </Grid>
             <Grid item xs={12} md={4}>
               <TextField
+                label="Approx. weight (kg per item)"
+                name="approxWeight"
+                type="number"
+                value={form.approxWeight}
+                onChange={onChange}
+                inputProps={{ min: 0, step: 0.1 }}
+                required
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
                 label="Quantity"
                 name="quantity"
                 type="number"
@@ -201,16 +289,40 @@ function RequestForm({
                 fullWidth
               />
             </Grid>
-            <Grid item xs={12} md={4}>
+            <Grid item xs={12} md={6}>
               <TextField
-                label="Preferred date & time"
-                name="preferredDateTime"
-                type="datetime-local"
-                value={form.preferredDateTime}
+                label="Set date"
+                name="preferredDate"
+                type="date"
+                value={form.preferredDate}
                 onChange={onChange}
                 required
                 InputLabelProps={{ shrink: true }}
-                inputProps={{ min: toLocalInputValue(new Date()) }}
+                inputProps={{ min: toLocalDateValue(new Date()) }}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Set time"
+                name="preferredTime"
+                type="time"
+                value={form.preferredTime}
+                onChange={onChange}
+                required
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 900 }}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Special handling notes"
+                name="specialNotes"
+                value={form.specialNotes}
+                onChange={onChange}
+                multiline
+                minRows={3}
                 fullWidth
               />
             </Grid>
@@ -411,10 +523,44 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const sessionId = getSessionId(session)
   const isAuthenticated = Boolean(sessionId || session?.email)
 
+  const sessionDefaults = useMemo(() => ({
+    residentName: session?.name ?? '',
+    ownerName: session?.householdOwnerName ?? session?.name ?? '',
+    address: session?.address ?? '',
+    district: session?.district ?? '',
+    email: session?.email ?? '',
+    phone: session?.phone ?? session?.contactNumber ?? '',
+  }), [
+    session?.name,
+    session?.householdOwnerName,
+    session?.address,
+    session?.district,
+    session?.email,
+    session?.phone,
+    session?.contactNumber,
+  ])
+
   const { loading: configLoading, error: configError, items } = useSpecialCollectionConfig()
   const allowedItems = useMemo(() => items.filter(item => item.allow), [items])
 
-  const [form, setForm] = useState(() => initialFormState)
+  const [form, setForm] = useState(() => ({
+    ...initialFormState,
+    ...sessionDefaults,
+  }))
+  useEffect(() => {
+    setForm(prev => {
+      let updated = false
+      const next = { ...prev }
+      Object.entries(sessionDefaults).forEach(([key, value]) => {
+        if (!value) return
+        if (!prev[key]) {
+          next[key] = value
+          updated = true
+        }
+      })
+      return updated ? next : prev
+    })
+  }, [sessionDefaults])
   useEffect(() => {
     if (!allowedItems.length) return
     setForm(prev => {
@@ -448,10 +594,18 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
 
   const handleFormChange = useCallback(event => {
     const { name, value } = event.target
-    setForm(prev => ({
-      ...prev,
-      [name]: name === 'quantity' ? Number(value) : value,
-    }))
+    setForm(prev => {
+      let nextValue = value
+      if (name === 'quantity') {
+        nextValue = value === '' ? '' : Number(value)
+      } else if (name === 'approxWeight') {
+        nextValue = value === '' ? '' : Number(value)
+      }
+      return {
+        ...prev,
+        [name]: nextValue,
+      }
+    })
     setAvailability(null)
     setFormError(null)
   }, [])
@@ -466,8 +620,30 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       return
     }
 
-    if (!form.itemType || !form.preferredDateTime) {
-      setFormError('Please select both an item type and preferred date/time before checking availability.')
+    const requiredChecks = [
+      { field: 'residentName', label: 'resident name', validate: value => Boolean(value?.trim()) },
+      { field: 'ownerName', label: "owner's name", validate: value => Boolean(value?.trim()) },
+      { field: 'address', label: 'address', validate: value => Boolean(value?.trim()) },
+      { field: 'district', label: 'district', validate: value => Boolean(value?.trim()) },
+      { field: 'email', label: 'email', validate: value => Boolean(value?.trim()) },
+      { field: 'phone', label: 'phone number', validate: value => Boolean(value?.trim()) },
+      { field: 'itemType', label: 'item type', validate: value => Boolean(value) },
+      { field: 'preferredDate', label: 'date', validate: value => Boolean(value) },
+      { field: 'preferredTime', label: 'time', validate: value => Boolean(value) },
+      { field: 'quantity', label: 'quantity', validate: value => Number(value) >= 1 },
+      { field: 'approxWeight', label: 'approximate weight', validate: value => Number(value) > 0 },
+    ]
+
+    const failedCheck = requiredChecks.find(check => !check.validate(form[check.field]))
+    if (failedCheck) {
+      setFormError(`Please provide a valid ${failedCheck.label}.`)
+      return
+    }
+
+    const combinedDateTime = combineDateAndTime(form.preferredDate, form.preferredTime)
+    const preferredDateTime = serializeDateTime(combinedDateTime)
+    if (!preferredDateTime) {
+      setFormError('Please choose both a date and time in the future before checking availability.')
       return
     }
 
@@ -484,7 +660,15 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           userId: sessionId,
           itemType: form.itemType,
           quantity: Number(form.quantity),
-          preferredDateTime: serializeDateTime(form.preferredDateTime),
+          preferredDateTime,
+          residentName: form.residentName,
+          ownerName: form.ownerName,
+          address: form.address,
+          district: form.district,
+          email: form.email,
+          phone: form.phone,
+          approxWeight: form.approxWeight === '' ? null : Number(form.approxWeight),
+          specialNotes: form.specialNotes,
         }),
       })
 
@@ -499,17 +683,32 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     } finally {
       setAvailabilityLoading(false)
     }
-  }, [form.itemType, form.preferredDateTime, form.quantity, isAuthenticated, ensureAuthenticated, sessionId])
+  }, [
+    form,
+    isAuthenticated,
+    ensureAuthenticated,
+    sessionId,
+  ])
 
   const submitBooking = useCallback(async (slot, paymentStatus, paymentReference) => {
     setBookingInFlight(true)
     try {
+      const combinedDateTime = combineDateAndTime(form.preferredDate, form.preferredTime)
+      const preferredDateTime = serializeDateTime(combinedDateTime)
       const payload = {
         userId: sessionId,
         itemType: form.itemType,
         quantity: Number(form.quantity),
-        preferredDateTime: serializeDateTime(form.preferredDateTime),
+        preferredDateTime,
         slotId: slot.slotId,
+        residentName: form.residentName,
+        ownerName: form.ownerName,
+        address: form.address,
+        district: form.district,
+        email: form.email,
+        phone: form.phone,
+        approxWeight: form.approxWeight === '' ? null : Number(form.approxWeight),
+        specialNotes: form.specialNotes,
       }
 
       if (paymentStatus) {
@@ -532,14 +731,21 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
 
       setFeedback({ type: 'success', message: result.message })
       setAvailability(null)
-      setForm(prev => ({ ...initialFormState, itemType: prev.itemType }))
+      setForm(prev => ({
+        ...prev,
+        preferredDate: initialFormState.preferredDate,
+        preferredTime: initialFormState.preferredTime,
+        approxWeight: initialFormState.approxWeight,
+        quantity: initialFormState.quantity,
+        specialNotes: initialFormState.specialNotes,
+      }))
       refreshRequests()
     } catch (error) {
       setFeedback({ type: 'error', message: error.message })
     } finally {
       setBookingInFlight(false)
     }
-  }, [form.itemType, form.preferredDateTime, form.quantity, refreshRequests, sessionId])
+  }, [form, refreshRequests, sessionId])
 
   const startCheckout = useCallback(async slot => {
     try {
@@ -547,15 +753,25 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       const origin = window.location.origin
       const successUrl = `${origin}/schedule/payment/result?status=success&session_id={CHECKOUT_SESSION_ID}`
       const cancelUrl = `${origin}/schedule/payment/result?status=cancelled&session_id={CHECKOUT_SESSION_ID}`
+      const combinedDateTime = combineDateAndTime(form.preferredDate, form.preferredTime)
+      const preferredDateTime = serializeDateTime(combinedDateTime)
 
       const request = {
         userId: sessionId,
         itemType: form.itemType,
         quantity: Number(form.quantity),
-        preferredDateTime: serializeDateTime(form.preferredDateTime),
+        preferredDateTime,
         slotId: slot.slotId,
         successUrl,
         cancelUrl,
+        residentName: form.residentName,
+        ownerName: form.ownerName,
+        address: form.address,
+        district: form.district,
+        email: form.email,
+        phone: form.phone,
+        approxWeight: form.approxWeight === '' ? null : Number(form.approxWeight),
+        specialNotes: form.specialNotes,
       }
 
       const response = await fetch('/api/schedules/special/payment/checkout', {
@@ -574,7 +790,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       setFeedback({ type: 'error', message: error.message })
       setBookingInFlight(false)
     }
-  }, [form.itemType, form.preferredDateTime, form.quantity, sessionId])
+  }, [form, sessionId])
 
   const handleConfirmSlot = useCallback(slot => {
     if (!availability) return
