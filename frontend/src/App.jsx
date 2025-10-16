@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Avatar, IconButton, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material'
-import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
+import { MapPinned, ClipboardCheck, Truck, CalendarClock, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
 import './App.css'
 import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
 import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
@@ -11,14 +11,13 @@ import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
 import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 import SpecialCollectionPage from './pages/Schedule/SpecialCollectionPage.jsx'
 import ReportsPage from './pages/Analytics/ReportsPage.jsx'
-import BillingPage from './pages/Billing/BillingPage.jsx'
 import CheckoutResultPage from './pages/Billing/CheckoutResultPage.jsx'
+import SpecialCollectionCheckoutResult from './pages/Schedule/SpecialCollectionCheckoutResult.jsx'
 
 const baseNavLinks = [
   { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
   { to: '/collector', label: 'Collector', description: 'Daily stop checklist', icon: ClipboardCheck },
   { to: '/schedule', label: 'Schedule', description: 'Pickup calendar', icon: CalendarClock },
-  { to: '/billing', label: 'Billing', description: 'Payments & invoices', icon: Receipt },
   { to: '/analytics', label: 'Analytics', description: 'Performance dashboards', icon: BarChart3 },
 ]
 
@@ -503,8 +502,8 @@ export default function App() {
               element={sessionUser ? <SpecialCollectionPage session={sessionUser} onSessionInvalid={handleSessionInvalid} /> : <Navigate to="/login" replace />}
             />
             <Route
-              path="/billing"
-              element={sessionUser ? <BillingPage session={sessionUser} /> : <Navigate to="/login" replace />}
+              path="/schedule/payment/result"
+              element={sessionUser ? <SpecialCollectionCheckoutResult session={sessionUser} /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/billing/checkout"
@@ -524,7 +523,7 @@ export default function App() {
             />
             <Route
               path="/userDashboard"
-              element={sessionUser ? <UserDashboard /> : <Navigate to="/login" replace />}
+              element={sessionUser ? <UserDashboard session={sessionUser} /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/adminDashboard"

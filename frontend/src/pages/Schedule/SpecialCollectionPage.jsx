@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography,} from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -40,7 +40,6 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     const [feedback, setFeedback] = useState(null)
     const [bookingLoading, setBookingLoading] = useState(false)
     const [error, setError] = useState(null)
-    const [paymentDialog, setPaymentDialog] = useState({ open: false, slot: null })
     const minDateTimeRef = useRef(toLocalInputValue(new Date()))
 
     const isAuthenticated = Boolean(session?.id || session?._id || session?.email)
@@ -59,7 +58,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
                 let data = null
                 try {
                     data = await res.json()
-                } catch (_parseError) {
+                } catch {
                     data = null
                 }
                 if (res.ok && data) {
@@ -88,7 +87,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
                 let data = null
                 try {
                     data = await res.json()
-                } catch (_parseError) {
+                } catch {
                     data = null
                 }
                 if (res.ok) {
@@ -108,7 +107,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             }
         }
         loadRequests()
-    }, [isAuthenticated, session])
+    }, [handleSessionExpired, isAuthenticated, session])
 
     useEffect(() => {
         if (!isAuthenticated) {
@@ -164,7 +163,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             let data = null
             try {
                 data = await res.json()
-            } catch (_parseError) {
+            } catch {
                 data = null
             }
             if (!res.ok || !data) {
@@ -219,7 +218,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             let data = null
             try {
                 data = await res.json()
-            } catch (_parseError) {
+            } catch {
                 data = null
             }
             if (!res.ok || !data) {
@@ -235,7 +234,6 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             setAvailability(null)
             setForm(() => ({ ...initialForm, itemType: form.itemType }))
             setRequests(prev => [data.request, ...prev])
-            setPaymentDialog({ open: false, slot: null })
         } catch (err) {
             setError(err.message)
         } finally {
@@ -243,21 +241,50 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
         }
     }
 
-    const handleConfirmSlot = slot => {
+    const handleConfirmSlot = async slot => {
         if (!availability) return
         if (availability.payment?.required) {
-            setPaymentDialog({ open: true, slot })
+            setBookingLoading(true)
+            setError(null)
+            try {
+                const origin = window.location.origin
+                const successUrl = `${origin}/schedule/payment/result?status=success&session_id={CHECKOUT_SESSION_ID}`
+                const cancelUrl = `${origin}/schedule/payment/result?status=cancelled&session_id={CHECKOUT_SESSION_ID}`
+
+                const payload = {
+                    userId: session.id || session._id,
+                    itemType: form.itemType,
+                    quantity: Number(form.quantity),
+                    preferredDateTime: serializeDateTime(form.preferredDateTime),
+                    slotId: slot.slotId,
+                    successUrl,
+                    cancelUrl,
+                }
+
+                const res = await fetch('/api/schedules/special/payment/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                })
+
+                let data = null
+                try {
+                    data = await res.json()
+                } catch {
+                    data = null
+                }
+
+                if (!res.ok || !data?.checkoutUrl) {
+                    throw new Error(data?.message || 'Unable to start payment checkout')
+                }
+
+                window.location.href = data.checkoutUrl
+            } catch (err) {
+                setError(err.message)
+                setBookingLoading(false)
+            }
         } else {
             submitBooking({ slot })
-        }
-    }
-
-    const handlePaymentDecision = async outcome => {
-        if (outcome === 'success' && paymentDialog.slot) {
-            await submitBooking({ slot: paymentDialog.slot, paymentStatus: 'success' })
-        } else {
-            setPaymentDialog({ open: false, slot: null })
-            setFeedback({ type: 'info', message: 'Payment was cancelled. Your slot remains unbooked.' })
         }
     }
 
@@ -487,37 +514,6 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
                         </CardContent>
                     </Card>
                 )}
-
-                <Dialog
-                    open={paymentDialog.open}
-                    onClose={(_event, reason) => {
-                        if (bookingLoading) return
-                        handlePaymentDecision('cancel')
-                    }}
-                    fullWidth
-                    maxWidth="sm"
-                    disableEscapeKeyDown={bookingLoading}
-                >
-                    <DialogTitle>Complete payment</DialogTitle>
-                    <DialogContent dividers>
-                        <Stack spacing={2}>
-                            <Typography variant="body1">
-                                Pay LKR {availability?.payment?.amount ? availability.payment.amount.toLocaleString() : '0'} to confirm your special pickup slot.
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                This simulated payment step represents the secure PaymentUI residents will use during the pilot. Choose “Complete payment” to proceed or “Cancel” to abandon the transaction.
-                            </Typography>
-                        </Stack>
-                    </DialogContent>
-                    <DialogActions>
-                        <Button onClick={() => handlePaymentDecision('cancel')} disabled={bookingLoading}>
-                            Cancel
-                        </Button>
-                        <Button variant="contained" onClick={() => handlePaymentDecision('success')} disabled={bookingLoading}>
-                            {bookingLoading ? 'Processing…' : 'Complete payment'}
-                        </Button>
-                    </DialogActions>
-                </Dialog>
             </Stack>
         </div>
     )

@@ -10,7 +10,7 @@ function formatCurrency(amount, currency = 'LKR') {
       currency,
       minimumFractionDigits: 2,
     })
-  } catch (_err) {
+  } catch {
     return `LKR ${amount.toFixed(2)}`
   }
 }
@@ -160,7 +160,7 @@ function PaidBillRow({ bill, onDownloadReceipt }) {
   )
 }
 
-export default function BillingPage({ session }) {
+export default function BillingPage({ session, variant = 'page' }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [data, setData] = useState(null)
@@ -273,9 +273,14 @@ export default function BillingPage({ session }) {
 
   const emptyState = !loading && outstandingBills.length === 0
 
+  const wrapperClass = variant === 'page' ? 'mx-auto max-w-6xl px-6' : ''
+  const panelClass = variant === 'page'
+    ? 'glass-panel my-8 rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md'
+    : 'glass-panel rounded-4xl border border-slate-200/70 bg-white/95 p-6 shadow-md'
+
   return (
-    <div className="mx-auto max-w-6xl px-6">
-      <Stack spacing={5} className="glass-panel my-8 rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
+    <div className={wrapperClass}>
+      <Stack spacing={5} className={panelClass}>
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={3}>
           <Box>
             <Chip
