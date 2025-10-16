@@ -529,6 +529,10 @@ export default function App() {
               path="/adminDashboard"
               element={sessionUser?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/login" replace />}
             />
+            <Route
+              path="*"
+              element={<Navigate to={sessionUser ? reroutePath : '/login'} replace />}
+            />
           </Routes>
         </main>
         <footer className="border-t border-slate-200/80 bg-white/70 py-6 text-sm text-slate-500">
