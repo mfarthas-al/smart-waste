@@ -17,6 +17,7 @@ const requestSchema = new Schema({
   contactEmail: { type: String, required: true },
   contactPhone: { type: String, required: true },
   approxWeightKg: { type: Number },
+  totalWeightKg: { type: Number },
   specialNotes: { type: String },
   itemType: { type: String, required: true },
   quantity: { type: Number, required: true, min: 1 },

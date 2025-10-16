@@ -17,21 +17,36 @@ const allowedItems = [
     label: 'Furniture & bulky items',
     description: 'Wardrobes, sofas, tables, mattresses and similar bulky household items.',
     allow: true,
-    policy: { includedQuantity: 2, feePerExtraItem: 500 },
+    policy: {
+      includedQuantity: 2,
+      feePerExtraItem: 500,
+      includedWeightKgPerItem: 25,
+      ratePerKg: 45,
+    },
   },
   {
     id: 'e-waste',
     label: 'Electronic waste',
     description: 'Televisions, refrigerators, computers, microwaves and other electrical items.',
     allow: true,
-    policy: { baseFee: 1500, feePerAdditionalItem: 750 },
+    policy: {
+      baseFee: 1500,
+      feePerAdditionalItem: 750,
+      includedWeightKgPerItem: 10,
+      ratePerKg: 95,
+    },
   },
   {
     id: 'yard',
     label: 'Garden trimmings',
     description: 'Branches, palm fronds, and bundled yard waste (max 25kg per bundle).',
     allow: true,
-    policy: { includedQuantity: 5, feePerExtraItem: 200 },
+    policy: {
+      includedQuantity: 5,
+      feePerExtraItem: 200,
+      includedWeightKgPerItem: 15,
+      ratePerKg: 30,
+    },
   },
   {
     id: 'construction',
@@ -178,19 +193,60 @@ async function attachAvailability(slots) {
   return results.filter(slot => slot.isAvailable);
 }
 
-function calculatePayment(itemPolicy, quantity) {
+function toPositiveNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+function calculatePayment(itemPolicy, quantity, approxWeightPerItemKg) {
   if (!itemPolicy?.policy) {
-    return { required: false, amount: 0 };
+    return { required: false, amount: 0, totalWeightKg: 0, weightCharge: 0, baseCharge: 0 };
   }
-  const { baseFee = 0, includedQuantity = 0, feePerExtraItem = 0, feePerAdditionalItem = 0 } = itemPolicy.policy;
+
+  const {
+    baseFee = 0,
+    includedQuantity = 0,
+    feePerExtraItem = 0,
+    feePerAdditionalItem = 0,
+    ratePerKg = 0,
+    includedWeightKgPerItem = 0,
+  } = itemPolicy.policy;
+
+  const normalisedQuantity = Math.max(Number(quantity) || 0, 0);
+  const weightPerItem = toPositiveNumber(approxWeightPerItemKg);
+  const totalWeightKg = weightPerItem * normalisedQuantity;
+
   let amount = baseFee;
-  if (includedQuantity && quantity > includedQuantity) {
-    amount += (quantity - includedQuantity) * (feePerExtraItem || feePerAdditionalItem || 0);
+
+  if (includedQuantity && normalisedQuantity > includedQuantity) {
+    amount += (normalisedQuantity - includedQuantity) * (feePerExtraItem || feePerAdditionalItem || 0);
   }
-  if (!includedQuantity && feePerAdditionalItem && quantity > 1) {
-    amount += (quantity - 1) * feePerAdditionalItem;
+  if (!includedQuantity && feePerAdditionalItem && normalisedQuantity > 1) {
+    amount += (normalisedQuantity - 1) * feePerAdditionalItem;
   }
-  return { required: amount > 0 || Boolean(baseFee), amount };
+
+  let weightCharge = 0;
+  if (ratePerKg > 0 && totalWeightKg > 0) {
+    const includedWeightTotal = toPositiveNumber(includedWeightKgPerItem) * normalisedQuantity;
+    const billableWeight = Math.max(totalWeightKg - includedWeightTotal, 0);
+    weightCharge = billableWeight * ratePerKg;
+    amount += weightCharge;
+  }
+
+  const roundedWeightCharge = Math.round(weightCharge * 100) / 100;
+  const roundedAmount = Math.round(amount * 100) / 100;
+  const baseChargeRaw = Math.max(roundedAmount - roundedWeightCharge, 0);
+  const roundedBaseCharge = Math.round(baseChargeRaw * 100) / 100;
+
+  const roundedTotalWeight = Math.round(totalWeightKg * 10) / 10;
+
+  return {
+    required: roundedAmount > 0,
+    amount: roundedAmount,
+    totalWeightKg: roundedTotalWeight,
+    weightCharge: roundedWeightCharge,
+    baseCharge: roundedBaseCharge,
+  };
 }
 
 async function finaliseBooking({
@@ -224,6 +280,9 @@ async function finaliseBooking({
     contactPhone: payload.phone?.trim(),
     approxWeightKg: typeof payload.approxWeight === 'number' && Number.isFinite(payload.approxWeight)
       ? payload.approxWeight
+      : undefined,
+    totalWeightKg: typeof payment.totalWeightKg === 'number' && Number.isFinite(payment.totalWeightKg)
+      ? payment.totalWeightKg
       : undefined,
     specialNotes: payload.specialNotes?.trim(),
     itemType: payload.itemType,
@@ -262,6 +321,9 @@ async function finaliseBooking({
         phone: payload.phone,
         approxWeight: payload.approxWeight,
         specialNotes: payload.specialNotes,
+        totalWeightKg: payment.totalWeightKg,
+        weightCharge: payment.weightCharge,
+        baseCharge: payment.baseCharge,
       },
     };
 
@@ -355,7 +417,7 @@ async function checkAvailability(req, res, next) {
     const availableSlots = await attachAvailability(
       filterCandidatesForPreferredDay(candidates, preferred),
     );
-    const payment = calculatePayment(policy, payload.quantity);
+    const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     return res.json({
       ok: true,
@@ -396,7 +458,7 @@ async function confirmBooking(req, res, next) {
       return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     if (payment.required && payload.paymentStatus !== 'success') {
       return res.status(402).json({ ok: false, message: 'Payment failed. The pickup was not scheduled.' });
@@ -480,7 +542,7 @@ async function startCheckout(req, res, next) {
       return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
     if (!payment.required) {
       return res.json({ ok: true, paymentRequired: false });
     }
@@ -512,9 +574,12 @@ async function startCheckout(req, res, next) {
       address: payload.address,
       district: payload.district,
       email: payload.email,
-      phone: payload.phone,
-      approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
-      specialNotes: payload.specialNotes,
+  phone: payload.phone,
+  approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
+  totalWeightKg: payment.totalWeightKg != null ? String(payment.totalWeightKg) : undefined,
+  weightCharge: payment.weightCharge != null ? String(payment.weightCharge) : undefined,
+  baseCharge: payment.baseCharge != null ? String(payment.baseCharge) : undefined,
+  specialNotes: payload.specialNotes,
     };
 
     Object.keys(metadata).forEach(key => {
@@ -673,7 +738,7 @@ async function syncCheckout(req, res, next) {
       return res.status(409).json({ ok: false, message: 'The chosen slot is no longer available. Please select a new time.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     if (!paymentSucceeded) {
       if (paymentFailed) {

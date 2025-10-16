@@ -139,6 +139,11 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                                                 {formatSlotTime(request.slot)}
                                             </Typography>
                                         </Stack>
+                                        {typeof request.totalWeightKg === 'number' && request.totalWeightKg > 0 ? (
+                                            <Typography variant="body2" color="text.secondary">
+                                                Estimated total weight: {request.totalWeightKg.toFixed(1)} kg
+                                            </Typography>
+                                        ) : null}
                                         {request.paymentAmount ? (
                                             <Typography variant="body2" color="text.secondary">
                                                 Paid amount: LKR {request.paymentAmount.toLocaleString()}

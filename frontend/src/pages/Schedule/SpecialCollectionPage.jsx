@@ -357,6 +357,8 @@ function RequestForm({
 function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFlight }) {
   const slots = availability?.slots ?? []
   const payment = availability?.payment
+  const totalWeightKg = Number(payment?.totalWeightKg ?? 0)
+  const weightChargeAmount = Number(payment?.weightCharge ?? 0)
 
   if (!availability) return null
 
@@ -397,11 +399,31 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
                         </Typography>
                         {payment?.required ? (
                           <Alert severity="info" icon={<Info size={18} />}>
-                            Payment required: LKR {payment.amount.toLocaleString()}. Completing payment will confirm this slot.
+                            Payment required: LKR {Number(payment.amount ?? 0).toLocaleString()}.
+                            {totalWeightKg > 0 ? (
+                              <>
+                                {' '}
+                                Estimated total weight: {totalWeightKg.toFixed(1)} kg.
+                              </>
+                            ) : null}
+                            {weightChargeAmount > 0 ? (
+                              <>
+                                {' '}
+                                Weight surcharge included: LKR {weightChargeAmount.toLocaleString()}.
+                              </>
+                            ) : null}
+                            {' '}
+                            Completing payment will confirm this slot.
                           </Alert>
                         ) : (
                           <Alert severity="success" icon={<CheckCircle2 size={18} />}>
                             No payment required for this request.
+                            {totalWeightKg > 0 ? (
+                              <>
+                                {' '}
+                                Estimated total weight: {totalWeightKg.toFixed(1)} kg.
+                              </>
+                            ) : null}
                           </Alert>
                         )}
                         <Button
@@ -426,15 +448,19 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
 
 function ScheduledRequests({ requests, loading, error, allowedItems, onRefresh }) {
   const decorated = useMemo(
-    () => requests.map(request => ({
-      id: request._id || request.id,
-      itemLabel: allowedItems.find(item => item.id === request.itemType)?.label || request.itemType,
-      quantity: request.quantity,
-      createdAt: request.createdAt,
-      slot: request.slot,
-      status: REQUEST_STATUSES[request.status] || REQUEST_STATUSES.scheduled,
-      paymentStatus: PAYMENT_STATUSES[request.paymentStatus] || PAYMENT_STATUSES['not-required'],
-    })),
+    () => requests.map(request => {
+      const totalWeight = Number(request.totalWeightKg)
+      return {
+        id: request._id || request.id,
+        itemLabel: allowedItems.find(item => item.id === request.itemType)?.label || request.itemType,
+        quantity: request.quantity,
+        totalWeightKg: Number.isFinite(totalWeight) ? totalWeight : null,
+        createdAt: request.createdAt,
+        slot: request.slot,
+        status: REQUEST_STATUSES[request.status] || REQUEST_STATUSES.scheduled,
+        paymentStatus: PAYMENT_STATUSES[request.paymentStatus] || PAYMENT_STATUSES['not-required'],
+      }
+    }),
     [requests, allowedItems],
   )
 
@@ -480,6 +506,11 @@ function ScheduledRequests({ requests, loading, error, allowedItems, onRefresh }
                       <Typography variant="body2" color="text.secondary">
                         Quantity: {request.quantity}
                       </Typography>
+                      {request.totalWeightKg && request.totalWeightKg > 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          Estimated total weight: {request.totalWeightKg.toFixed(1)} kg
+                        </Typography>
+                      ) : null}
                       <Typography variant="body2" color="text.secondary">
                         Requested on {formatRequestTimestamp(request.createdAt)}
                       </Typography>
@@ -631,7 +662,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       { field: 'preferredDate', label: 'date', validate: value => Boolean(value) },
       { field: 'preferredTime', label: 'time', validate: value => Boolean(value) },
       { field: 'quantity', label: 'quantity', validate: value => Number(value) >= 1 },
-      { field: 'approxWeight', label: 'approximate weight', validate: value => Number(value) > 0 },
+  { field: 'approxWeight', label: 'approximate weight (kg per item)', validate: value => Number(value) > 0 },
     ]
 
     const failedCheck = requiredChecks.find(check => !check.validate(form[check.field]))
