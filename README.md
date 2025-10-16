@@ -145,18 +145,27 @@ npm run dev
 
 ## Design Critique SPA (Report.html)
 
-A standalone, static "Design Critique & Improvement" single-page report is included at the repository root as `Report.html`. It demonstrates proposed UI/UX and functional improvements with interactive Chart.js visualisations (no SVG/Mermaid). This is a self-contained, read-only artifact useful for stakeholder reviews.
+A standalone, static "Design Critique & Improvement" single-page report is included at the repository root as `Report.html`.
 
 Files:
-- Report.html — top-level file: `./Report.html`
+- Report.html — top-level file: ./Report.html
 
-How to run / view the report (pick one)
+How to view the report (from the repository root)
 
-- Option A — Quick static server (recommended)
-  PowerShell (from repo root):
-  ```powershell
-  # Using Python 3
-  python -m http.server 8080
-  # or with Node (no install required)
-  npx http-server . -p 8080
-  ```
+Option A — Quick static server (recommended)
+# From the repository root (where README.md and Report.html live)
+# Node (no install required)
+npx http-server . -p 8080
+# or Python 3
+python -m http.server 8080
+
+Open: http://127.0.0.1:8080/Report.html
+
+Option B — Open directly in the browser
+Open the file at: ./Report.html
+Note: some browsers restrict local file access for CDN assets — use Option A if Chart.js or Tailwind fail to load.
+
+Option C — GitHub Pages (public hosting)
+After pushing the repo, the report will be available at:
+https://<github-username>.github.io/<repo-name>/Report.html
+(Enable GitHub Pages in the repository settings or publish the file to the gh-pages branch.)
