@@ -27,12 +27,53 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  failedLoginAttempts: {
+    type: Number,
+    default: 0,
+  },
+  lockUntil: {
+    type: Date,
+    default: null,
+  },
 }, {
   timestamps: true,
 });
 
 userSchema.methods.verifyPassword = function verifyPassword(candidate) {
   return bcrypt.compare(candidate, this.passwordHash);
+};
+
+userSchema.methods.resetLoginAttempts = async function resetLoginAttempts() {
+  if (this.failedLoginAttempts !== 0 || this.lockUntil) {
+    this.failedLoginAttempts = 0;
+    this.lockUntil = null;
+    await this.save();
+  }
+};
+
+userSchema.methods.registerFailedLogin = async function registerFailedLogin(maxAttempts, lockMinutes) {
+  const now = new Date();
+
+  if (this.lockUntil && this.lockUntil > now) {
+    return this.lockUntil;
+  }
+
+  if (this.lockUntil && this.lockUntil <= now) {
+    this.failedLoginAttempts = 0;
+    this.lockUntil = null;
+  }
+
+  this.failedLoginAttempts += 1;
+
+  if (this.failedLoginAttempts >= maxAttempts) {
+    const lockUntil = new Date(now.getTime() + lockMinutes * 60 * 1000);
+    this.lockUntil = lockUntil;
+    await this.save();
+    return lockUntil;
+  }
+
+  await this.save();
+  return null;
 };
 
 userSchema.statics.hashPassword = function hashPassword(plain) {

@@ -18,6 +18,8 @@
     "express": "^5.1.0",
     "mongoose": "^8.18.2",
     "morgan": "^1.10.1",
+    "nodemailer": "^6.9.15",
+    "stripe": "^14.25.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
