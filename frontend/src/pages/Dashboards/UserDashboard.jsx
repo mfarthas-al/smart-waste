@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, IconButton, Stack, Tooltip, Typography, } from '@mui/material'
-import { CalendarClock, ChevronLeft, ChevronRight, History, RefreshCcw, Wallet, } from 'lucide-react'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, Drawer, IconButton, Stack, Tooltip, Typography, useMediaQuery, useTheme, } from '@mui/material'
+import { CalendarClock, ChevronLeft, ChevronRight, History, Menu, RefreshCcw, Wallet, X, } from 'lucide-react'
 import BillingPage from '../Billing/BillingPage.jsx'
 
 const dashboardSections = [
@@ -156,64 +156,133 @@ function useSchedulingData(session) {
   }
 }
 
-function DashboardSideNav({ collapsed, onToggle, activeSection, onNavigate }) {
-  return (
-    <aside className={`w-full lg:sticky lg:top-28 lg:w-auto ${collapsed ? 'lg:min-w-[5rem]' : 'lg:min-w-[16rem]'}`}>
-      <div className={`glass-panel rounded-3xl border border-slate-200/70 bg-white/90 shadow-md transition-all duration-200 ${collapsed ? 'lg:px-2' : 'lg:px-4'} px-4 py-4`}>
-        <div className="flex items-center justify-between">
-          <Typography variant="subtitle2" fontWeight={600} className="lg:hidden">
-            Sections
-          </Typography>
+function DashboardSideNav({
+  collapsed,
+  mobileOpen,
+  onToggle,
+  onClose,
+  activeSection,
+  onNavigate,
+}) {
+  const theme = useTheme()
+  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'))
+  const desktopWidth = collapsed ? 128 : 296
+
+  const content = (
+    <div
+      className={`glass-panel flex h-full flex-col gap-4 rounded-3xl border border-slate-200/70 bg-white/90 p-4 shadow-md transition-all duration-200 ${
+        isDesktop && collapsed ? 'items-center' : 'items-stretch'
+      }`}
+      style={{
+        width: '100%',
+        maxHeight: isDesktop ? 'calc(100vh - 160px)' : '100%',
+        overflowY: 'auto',
+      }}
+    >
+      <div className="flex w-full items-center justify-between">
+        <Typography
+          variant="subtitle2"
+          fontWeight={600}
+          className={`transition-opacity duration-200 ${isDesktop && collapsed ? 'opacity-0' : 'opacity-100'}`}
+        >
+          Sections
+        </Typography>
+        {isDesktop ? (
           <IconButton
             onClick={onToggle}
             size="small"
-            className="hidden lg:inline-flex"
             aria-label={collapsed ? 'Expand dashboard navigation' : 'Collapse dashboard navigation'}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </IconButton>
-        </div>
-        <Stack
-          direction={{ xs: 'row', lg: 'column' }}
-          spacing={1}
-          mt={collapsed ? 2 : 3}
-          className="overflow-x-auto pb-1 lg:overflow-visible"
-        >
-          {dashboardSections.map(section => {
-            const Icon = section.icon
-            const isActive = activeSection === section.id
-            return (
-              <Tooltip
-                key={section.id}
-                title={section.label}
-                placement="right"
-                arrow
-                disableHoverListener={!collapsed}
-                disableFocusListener={!collapsed}
-                disableTouchListener={!collapsed}
-              >
-                <span className="inline-flex">
-                  <button
-                    type="button"
-                    onClick={() => onNavigate(section.id)}
-                    className={`flex min-w-[3rem] items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white lg:w-full ${collapsed ? 'lg:justify-center lg:px-2' : ''
-                      } ${isActive
-                        ? 'bg-brand-500/15 text-brand-700 shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-100/70'
-                      }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className={`${collapsed ? 'lg:hidden' : ''} whitespace-nowrap`}>
-                      {section.label}
-                    </span>
-                  </button>
-                </span>
-              </Tooltip>
-            )
-          })}
-        </Stack>
+        ) : (
+          <IconButton onClick={onClose} size="small" aria-label="Close navigation">
+            <X className="h-4 w-4" />
+          </IconButton>
+        )}
       </div>
-    </aside>
+
+  <Stack direction="column" spacing={1}>
+        {dashboardSections.map(section => {
+          const Icon = section.icon
+          const isActive = activeSection === section.id
+          return (
+            <Tooltip
+              key={section.id}
+              title={section.label}
+              placement="right"
+              arrow
+              disableHoverListener={!isDesktop || !collapsed}
+              disableFocusListener={!isDesktop || !collapsed}
+              disableTouchListener={!isDesktop || !collapsed}
+            >
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNavigate(section.id)
+                    if (!isDesktop) {
+                      onClose()
+                    }
+                  }}
+                  className={`flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+                    isDesktop && collapsed ? 'justify-center px-2' : ''
+                  } ${
+                    isActive
+                      ? 'bg-brand-500/15 text-brand-700 shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100/70'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className={`${isDesktop && collapsed ? 'lg:hidden' : ''} whitespace-nowrap`}>
+                    {section.label}
+                  </span>
+                </button>
+              </span>
+            </Tooltip>
+          )
+        })}
+      </Stack>
+    </div>
+  )
+
+  if (isDesktop) {
+    return (
+      <div
+        className="hidden lg:block"
+        style={{
+          position: 'fixed',
+          top: 112,
+          left: 0,
+          width: desktopWidth,
+          padding: '0 16px',
+          zIndex: 30,
+        }}
+      >
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <Drawer
+      anchor="left"
+      open={mobileOpen}
+      onClose={onClose}
+      PaperProps={{
+        sx: {
+          width: '80vw',
+          maxWidth: 320,
+          borderRadius: '0 20px 20px 0',
+          borderRight: '1px solid rgba(148, 163, 184, 0.35)',
+          bgcolor: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(12px)',
+          p: 0,
+        },
+      }}
+    >
+      {content}
+    </Drawer>
   )
 }
 
@@ -523,10 +592,13 @@ function HistorySection({ history, itemLabelMap, loading, onRefresh }) {
 }
 
 export default function UserDashboard({ session = null }) {
+  const theme = useTheme()
+  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'))
   const [navCollapsed, setNavCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
-    return window.innerWidth < 1024
+    return window.innerWidth < 1280
   })
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('billing')
 
   const { requests, itemLabelMap, loading, error, refresh } = useSchedulingData(session)
@@ -557,15 +629,22 @@ export default function UserDashboard({ session = null }) {
   }, [requests])
 
   const handleToggleNav = useCallback(() => {
-    setNavCollapsed(prev => !prev)
-  }, [])
+    if (isDesktop) {
+      setNavCollapsed(prev => !prev)
+    } else {
+      setMobileNavOpen(prev => !prev)
+    }
+  }, [isDesktop])
 
   const handleNavigate = useCallback(sectionId => {
     setActiveSection(sectionId)
+    if (!isDesktop) {
+      setMobileNavOpen(false)
+    }
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
-  }, [])
+  }, [isDesktop])
 
   const sectionProps = {
     billing: {
@@ -597,16 +676,35 @@ export default function UserDashboard({ session = null }) {
     return BillingSection
   }, [activeSection])
 
+  const navWidth = navCollapsed ? 128 : 296
+  const desktopOffset = isDesktop ? navWidth + 40 : 0
+
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10 lg:flex-row">
+    <div className="relative w-full py-10">
       <DashboardSideNav
         collapsed={navCollapsed}
+        mobileOpen={mobileNavOpen}
         onToggle={handleToggleNav}
+        onClose={() => setMobileNavOpen(false)}
         activeSection={activeSection}
         onNavigate={handleNavigate}
       />
 
-      <div className="flex-1 space-y-8">
+      <div
+        className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6"
+        style={{ marginLeft: isDesktop ? desktopOffset : 0, transition: 'margin 0.2s ease' }}
+      >
+        {!isDesktop && (
+          <div className="sticky top-6 z-20 flex items-center justify-between rounded-3xl border border-slate-200/70 bg-white/90 px-4 py-3 shadow-md">
+            <Typography variant="subtitle2" fontWeight={600}>
+              Dashboard sections
+            </Typography>
+            <IconButton onClick={() => setMobileNavOpen(true)} size="small" aria-label="Open navigation menu">
+              <Menu className="h-5 w-5" />
+            </IconButton>
+          </div>
+        )}
+
         <section>
           <div className="glass-panel rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
             <Stack spacing={1.5}>
