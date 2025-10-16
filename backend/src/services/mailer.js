@@ -31,7 +31,7 @@ async function sendMail(message) {
   }
 
   const envelope = {
-    from: process.env.SMTP_FROM || 'Smart Waste LK <no-reply@smartwaste.lk>',
+    from: process.env.SMTP_FROM,
     ...message,
   };
 
