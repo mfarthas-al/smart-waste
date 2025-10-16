@@ -20,6 +20,7 @@ const requestSchema = new Schema({
   totalWeightKg: { type: Number },
   specialNotes: { type: String },
   itemType: { type: String, required: true },
+  itemLabel: { type: String },
   quantity: { type: Number, required: true, min: 1 },
   preferredDateTime: { type: Date, required: true },
   slot: { type: slotSchema, required: true },
@@ -35,6 +36,9 @@ const requestSchema = new Schema({
     default: 'not-required',
   },
   paymentAmount: { type: Number, default: 0 },
+  paymentSubtotal: { type: Number, default: 0 },
+  paymentWeightCharge: { type: Number, default: 0 },
+  paymentTaxCharge: { type: Number, default: 0 },
   paymentReference: { type: String },
   notifications: {
     residentSentAt: { type: Date },

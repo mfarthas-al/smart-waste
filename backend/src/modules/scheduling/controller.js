@@ -265,6 +265,7 @@ async function finaliseBooking({
   paymentReference,
   paymentDoc,
   provider = 'internal',
+  itemPolicy,
 }) {
   const existing = await SpecialCollectionRequest.countDocuments({
     'slot.slotId': slot.slotId,
@@ -294,6 +295,7 @@ async function finaliseBooking({
       : undefined,
     specialNotes: payload.specialNotes?.trim(),
     itemType: payload.itemType,
+    itemLabel: itemPolicy?.label,
     quantity: payload.quantity,
     preferredDateTime: toDate(payload.preferredDateTime),
     slot,
@@ -301,6 +303,9 @@ async function finaliseBooking({
     paymentRequired: payment.required,
     paymentStatus: payment.required ? 'success' : 'not-required',
     paymentAmount: payment.amount,
+    paymentSubtotal: payment.baseCharge,
+    paymentWeightCharge: payment.weightCharge,
+    paymentTaxCharge: payment.taxCharge,
     paymentReference,
     notifications: {},
   });
@@ -319,6 +324,7 @@ async function finaliseBooking({
       metadata: {
         ...(paymentDoc?.metadata || {}),
         itemType: payload.itemType,
+        itemLabel: itemPolicy?.label,
         quantity: payload.quantity,
         preferredDateTime: payload.preferredDateTime,
         residentName: payload.residentName,
@@ -502,6 +508,7 @@ async function confirmBooking(req, res, next) {
       paymentReference: payment.required ? (payload.paymentReference || `PAY-${Date.now()}`) : undefined,
       paymentDoc: null,
       provider: 'internal-simulator',
+      itemPolicy: policy,
     });
 
     return res.status(201).json({
@@ -575,6 +582,7 @@ async function startCheckout(req, res, next) {
     const metadata = {
       userId: user._id.toString(),
       itemType: payload.itemType,
+      itemLabel: policy.label,
       quantity: String(payload.quantity),
       preferredDateTime: preferred.toISOString(),
       slotId: slot.slotId,
@@ -765,6 +773,15 @@ async function syncCheckout(req, res, next) {
     }
 
     const user = await resolveUser(paymentDoc.userId.toString());
+    if (!payment.required) {
+      await SpecialCollectionPayment.updateOne({ _id: paymentDoc._id }, {
+        $set: {
+          status: 'failed',
+          reference: paymentIntent?.id || sessionId,
+        },
+      });
+      return res.status(400).json({ ok: false, message: 'Payment metadata indicates zero amount. Please contact support.' });
+    }
     const requestDoc = await finaliseBooking({
       user,
       payload,
@@ -773,6 +790,7 @@ async function syncCheckout(req, res, next) {
       paymentReference: paymentIntent?.id || sessionId,
       paymentDoc,
       provider: 'stripe',
+      itemPolicy: policy,
     });
 
     return res.json({
