@@ -1,12 +1,22 @@
 const nodemailer = require('nodemailer');
 
+const debugMail = (...args) => {
+  if (process.env.SMTP_DEBUG === 'true') {
+    console.info('[mailer]', ...args);
+  }
+};
+
 let transporter;
 
 function getTransporter() {
-  if (transporter) return transporter;
+  if (transporter) {
+    debugMail('Reusing existing transporter');
+    return transporter;
+  }
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE, SMTP_KEY } = process.env;
   if (!SMTP_HOST) {
+    debugMail('SMTP_HOST missing; mail transport disabled');
     return null;
   }
 
@@ -17,6 +27,14 @@ function getTransporter() {
     port: Number(SMTP_PORT) || 587,
     secure: SMTP_SECURE === 'true' || Number(SMTP_PORT) === 465,
     auth: SMTP_USER && smtpPassword ? { user: SMTP_USER, pass: smtpPassword } : undefined,
+  });
+
+  transporter.verify((verifyErr, success) => {
+    if (verifyErr) {
+      console.warn('⚠️ Mailer verification failed', verifyErr);
+    } else if (success) {
+      debugMail('SMTP transporter ready', { host: SMTP_HOST, port: SMTP_PORT });
+    }
   });
 
   return transporter;
@@ -33,18 +51,38 @@ async function sendMail(message) {
   }
 
   const envelope = {
-    from: process.env.SMTP_FROM,
+    from: process.env.SMTP_FROM || 'Smart Waste LK <no-reply@smartwaste.lk>',
     ...message,
   };
 
-  await mailClient.sendMail(envelope);
-  return { sent: true, sentAt: new Date() };
+  debugMail('Sending email', {
+    to: envelope.to,
+    subject: envelope.subject,
+  });
+
+  try {
+    const info = await mailClient.sendMail(envelope);
+    debugMail('Email dispatch result', { messageId: info.messageId, to: envelope.to });
+    return { sent: true, sentAt: new Date(), messageId: info.messageId };
+  } catch (sendError) {
+    console.error('🚨 Email send failed', {
+      to: envelope.to,
+      subject: envelope.subject,
+      error: sendError.message,
+    });
+    return { sent: false, reason: 'send-error', error: sendError };
+  }
 }
 
 async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
   }
+
+  debugMail('Queueing resident confirmation email', {
+    to: resident.email,
+    requestId: request._id?.toString() || request.id,
+  });
 
   const subject = `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
   const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
@@ -86,6 +124,8 @@ async function notifyAuthorityOfSpecialPickup({ request, slot }) {
     return { sent: false, reason: 'not-configured' };
   }
 
+  debugMail('Queueing authority notification', { to: authorityEmail, requestId: request._id?.toString() });
+
   const subject = `New special pickup scheduled (${request.itemType}, ${request.quantity})`;
   const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
 
@@ -112,6 +152,12 @@ async function sendPaymentReceipt({ resident, bill, transaction }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
   }
+
+  debugMail('Queueing payment receipt email', {
+    to: resident.email,
+    billId: bill._id?.toString() || bill.id,
+    transactionId: transaction._id?.toString() || transaction.id,
+  });
 
   const subject = `Payment received for ${bill.invoiceNumber}`;
   const amount = transaction.amount?.toLocaleString('en-LK', { style: 'currency', currency: bill.currency || 'LKR' });

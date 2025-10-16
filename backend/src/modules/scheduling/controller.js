@@ -17,21 +17,36 @@ const allowedItems = [
     label: 'Furniture & bulky items',
     description: 'Wardrobes, sofas, tables, mattresses and similar bulky household items.',
     allow: true,
-    policy: { includedQuantity: 2, feePerExtraItem: 500 },
+    policy: {
+      includedQuantity: 2,
+      feePerExtraItem: 500,
+      includedWeightKgPerItem: 25,
+      ratePerKg: 45,
+    },
   },
   {
     id: 'e-waste',
     label: 'Electronic waste',
     description: 'Televisions, refrigerators, computers, microwaves and other electrical items.',
     allow: true,
-    policy: { baseFee: 1500, feePerAdditionalItem: 750 },
+    policy: {
+      baseFee: 1500,
+      feePerAdditionalItem: 750,
+      includedWeightKgPerItem: 10,
+      ratePerKg: 95,
+    },
   },
   {
     id: 'yard',
     label: 'Garden trimmings',
     description: 'Branches, palm fronds, and bundled yard waste (max 25kg per bundle).',
     allow: true,
-    policy: { includedQuantity: 5, feePerExtraItem: 200 },
+    policy: {
+      includedQuantity: 5,
+      feePerExtraItem: 200,
+      includedWeightKgPerItem: 15,
+      ratePerKg: 30,
+    },
   },
   {
     id: 'construction',
@@ -50,12 +65,31 @@ const SLOT_CONFIG = {
   timezone: 'Asia/Colombo',
 };
 
+const TAX_RATE = 0.03; // 3% municipal service levy
+
+const approxWeightSchema = z.union([
+  z.number().positive('Approximate weight must be greater than zero'),
+  z.null(),
+  z.undefined(),
+]);
+
+const residentDetailsSchema = {
+  residentName: z.string().min(1, 'Resident name is required'),
+  ownerName: z.string().min(1, "Owner's name is required"),
+  address: z.string().min(1, 'Address is required'),
+  district: z.string().min(1, 'District is required'),
+  email: z.string().email('A valid email is required'),
+  phone: z.string().min(7, 'A valid phone number is required'),
+  approxWeight: approxWeightSchema,
+  specialNotes: z.string().max(1000).optional(),
+};
+
 const availabilitySchema = z.object({
   userId: z.string().min(1, 'User id is required'),
   itemType: z.string().min(1, 'Item type is required'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
   preferredDateTime: z.string().datetime().or(z.date()),
-});
+}).extend(residentDetailsSchema);
 
 const bookingSchema = availabilitySchema.extend({
   slotId: z.string().min(1, 'Slot id is required'),
@@ -161,19 +195,66 @@ async function attachAvailability(slots) {
   return results.filter(slot => slot.isAvailable);
 }
 
-function calculatePayment(itemPolicy, quantity) {
+function toPositiveNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+function calculatePayment(itemPolicy, quantity, approxWeightPerItemKg) {
   if (!itemPolicy?.policy) {
-    return { required: false, amount: 0 };
+    return { required: false, amount: 0, totalWeightKg: 0, weightCharge: 0, baseCharge: 0 };
   }
-  const { baseFee = 0, includedQuantity = 0, feePerExtraItem = 0, feePerAdditionalItem = 0 } = itemPolicy.policy;
+
+  const {
+    baseFee = 0,
+    includedQuantity = 0,
+    feePerExtraItem = 0,
+    feePerAdditionalItem = 0,
+    ratePerKg = 0,
+    includedWeightKgPerItem = 0,
+  } = itemPolicy.policy;
+
+  const normalisedQuantity = Math.max(Number(quantity) || 0, 0);
+  const weightPerItem = toPositiveNumber(approxWeightPerItemKg);
+  const totalWeightKg = weightPerItem * normalisedQuantity;
+
   let amount = baseFee;
-  if (includedQuantity && quantity > includedQuantity) {
-    amount += (quantity - includedQuantity) * (feePerExtraItem || feePerAdditionalItem || 0);
+
+  if (includedQuantity && normalisedQuantity > includedQuantity) {
+    amount += (normalisedQuantity - includedQuantity) * (feePerExtraItem || feePerAdditionalItem || 0);
   }
-  if (!includedQuantity && feePerAdditionalItem && quantity > 1) {
-    amount += (quantity - 1) * feePerAdditionalItem;
+  if (!includedQuantity && feePerAdditionalItem && normalisedQuantity > 1) {
+    amount += (normalisedQuantity - 1) * feePerAdditionalItem;
   }
-  return { required: amount > 0 || Boolean(baseFee), amount };
+
+  let weightCharge = 0;
+  if (ratePerKg > 0 && totalWeightKg > 0) {
+    const includedWeightTotal = toPositiveNumber(includedWeightKgPerItem) * normalisedQuantity;
+    const billableWeight = Math.max(totalWeightKg - includedWeightTotal, 0);
+    weightCharge = billableWeight * ratePerKg;
+    amount += weightCharge;
+  }
+
+  const roundedWeightCharge = Math.round(weightCharge * 100) / 100;
+  const baseChargeRaw = Math.max(amount - weightCharge, 0);
+  const roundedBaseCharge = Math.round(baseChargeRaw * 100) / 100;
+
+  const taxableBase = Math.max(roundedBaseCharge + roundedWeightCharge, 0);
+  const taxChargeRaw = taxableBase * TAX_RATE;
+  const roundedTaxCharge = Math.round(taxChargeRaw * 100) / 100;
+
+  const roundedTotalWeight = Math.round(totalWeightKg * 10) / 10;
+  const grossTotal = taxableBase + roundedTaxCharge;
+  const roundedTotal = Math.round(grossTotal * 100) / 100;
+
+  return {
+    required: roundedTotal > 0,
+    amount: roundedTotal,
+    totalWeightKg: roundedTotalWeight,
+    weightCharge: roundedWeightCharge,
+    baseCharge: roundedBaseCharge,
+    taxCharge: roundedTaxCharge,
+  };
 }
 
 async function finaliseBooking({
@@ -199,6 +280,19 @@ async function finaliseBooking({
     userId: user._id,
     userEmail: user.email,
     userName: user.name,
+    residentName: payload.residentName?.trim() || user.name,
+    ownerName: payload.ownerName?.trim() || payload.residentName?.trim() || user.name,
+    address: payload.address?.trim(),
+    district: payload.district?.trim(),
+    contactEmail: payload.email?.trim() || user.email,
+    contactPhone: payload.phone?.trim(),
+    approxWeightKg: typeof payload.approxWeight === 'number' && Number.isFinite(payload.approxWeight)
+      ? payload.approxWeight
+      : undefined,
+    totalWeightKg: typeof payment.totalWeightKg === 'number' && Number.isFinite(payment.totalWeightKg)
+      ? payment.totalWeightKg
+      : undefined,
+    specialNotes: payload.specialNotes?.trim(),
     itemType: payload.itemType,
     quantity: payload.quantity,
     preferredDateTime: toDate(payload.preferredDateTime),
@@ -227,6 +321,18 @@ async function finaliseBooking({
         itemType: payload.itemType,
         quantity: payload.quantity,
         preferredDateTime: payload.preferredDateTime,
+        residentName: payload.residentName,
+        ownerName: payload.ownerName,
+        address: payload.address,
+        district: payload.district,
+        email: payload.email,
+        phone: payload.phone,
+        approxWeight: payload.approxWeight,
+        specialNotes: payload.specialNotes,
+        totalWeightKg: payment.totalWeightKg,
+        weightCharge: payment.weightCharge,
+        baseCharge: payment.baseCharge,
+        taxCharge: payment.taxCharge,
       },
     };
 
@@ -320,7 +426,7 @@ async function checkAvailability(req, res, next) {
     const availableSlots = await attachAvailability(
       filterCandidatesForPreferredDay(candidates, preferred),
     );
-    const payment = calculatePayment(policy, payload.quantity);
+    const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     return res.json({
       ok: true,
@@ -361,7 +467,7 @@ async function confirmBooking(req, res, next) {
       return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     if (payment.required && payload.paymentStatus !== 'success') {
       return res.status(402).json({ ok: false, message: 'Payment failed. The pickup was not scheduled.' });
@@ -378,6 +484,14 @@ async function confirmBooking(req, res, next) {
       itemType: payload.itemType,
       quantity: payload.quantity,
       preferredDateTime: payload.preferredDateTime,
+      residentName: payload.residentName,
+      ownerName: payload.ownerName,
+      address: payload.address,
+      district: payload.district,
+      email: payload.email,
+      phone: payload.phone,
+      approxWeight: payload.approxWeight ?? undefined,
+      specialNotes: payload.specialNotes,
     };
 
     const requestDoc = await finaliseBooking({
@@ -437,7 +551,7 @@ async function startCheckout(req, res, next) {
       return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
     if (!payment.required) {
       return res.json({ ok: true, paymentRequired: false });
     }
@@ -464,7 +578,27 @@ async function startCheckout(req, res, next) {
       quantity: String(payload.quantity),
       preferredDateTime: preferred.toISOString(),
       slotId: slot.slotId,
+      residentName: payload.residentName,
+      ownerName: payload.ownerName,
+      address: payload.address,
+      district: payload.district,
+      email: payload.email,
+  phone: payload.phone,
+  approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
+  totalWeightKg: payment.totalWeightKg != null ? String(payment.totalWeightKg) : undefined,
+  weightCharge: payment.weightCharge != null ? String(payment.weightCharge) : undefined,
+  baseCharge: payment.baseCharge != null ? String(payment.baseCharge) : undefined,
+      taxCharge: payment.taxCharge != null ? String(payment.taxCharge) : undefined,
+  specialNotes: payload.specialNotes,
     };
+
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key] === undefined || metadata[key] === null) {
+        delete metadata[key];
+      } else {
+        metadata[key] = String(metadata[key]).slice(0, 500);
+      }
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -566,9 +700,30 @@ async function syncCheckout(req, res, next) {
       itemType: metadata.itemType,
       quantity: quantityValue,
       preferredDateTime: metadata.preferredDateTime,
+      residentName: metadata.residentName,
+      ownerName: metadata.ownerName,
+      address: metadata.address,
+      district: metadata.district,
+      email: metadata.email,
+      phone: metadata.phone,
+      approxWeight: metadata.approxWeight ? Number(metadata.approxWeight) : undefined,
+      specialNotes: metadata.specialNotes,
     };
 
-    if (!payload.itemType || Number.isNaN(payload.quantity) || payload.quantity < 1 || !payload.preferredDateTime || !metadata.slotId) {
+    if (
+      !payload.itemType
+      || Number.isNaN(payload.quantity)
+      || payload.quantity < 1
+      || !payload.preferredDateTime
+      || !metadata.slotId
+  || !payload.residentName
+  || !payload.ownerName
+      || !payload.address
+      || !payload.district
+      || !payload.email
+      || !payload.phone
+      || (payload.approxWeight !== undefined && (Number.isNaN(payload.approxWeight) || payload.approxWeight <= 0))
+    ) {
       await SpecialCollectionPayment.updateOne({ _id: paymentDoc._id }, {
         $set: { status: 'failed', reference: paymentIntent?.id || sessionId },
       });
@@ -593,7 +748,7 @@ async function syncCheckout(req, res, next) {
       return res.status(409).json({ ok: false, message: 'The chosen slot is no longer available. Please select a new time.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     if (!paymentSucceeded) {
       if (paymentFailed) {

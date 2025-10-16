@@ -755,7 +755,7 @@ export default function UserDashboard({ session = null }) {
               <Box className="glass-panel rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
                 <Stack spacing={1.5}>
                   <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                    Crew dashboard
+                    User dashboard
                   </Typography>
                   <Typography variant="h4" fontWeight={600}>
                     {session?.name ? `Welcome back, ${session.name}` : 'Welcome to your dashboard'}
