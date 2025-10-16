@@ -1,7 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, IconButton, Stack, Tooltip, Typography, } from '@mui/material'
-import { CalendarClock, ChevronLeft, ChevronRight, History, RefreshCcw, Wallet, } from 'lucide-react'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Divider,
+  IconButton,
+  Stack,
+  Tooltip,
+  Typography,
+} from '@mui/material'
+import {
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  RefreshCcw,
+  Wallet,
+} from 'lucide-react'
 import BillingPage from '../Billing/BillingPage.jsx'
 
 const dashboardSections = [
@@ -229,9 +249,11 @@ function RequestCard({ request, itemLabelMap, variant = 'default' }) {
     ? formatCurrency(request.paymentAmount, request.currency || request.paymentCurrency || 'LKR')
     : null
 
-  const cardClass = variant === 'upcoming'
-    ? 'border-brand-200/70 bg-emerald-50/40'
-    : 'border-slate-200/70 bg-white/95'
+  const cardClass = (() => {
+    if (variant === 'upcoming') return 'border-brand-200/70 bg-emerald-50/40'
+    if (variant === 'billing') return 'border-brand-200/60 bg-white'
+    return 'border-slate-200/70 bg-white/95'
+  })()
 
   return (
     <Box className={`rounded-2xl border px-4 py-3 transition ${cardClass}`}>
@@ -261,6 +283,262 @@ function RequestCard({ request, itemLabelMap, variant = 'default' }) {
         </Stack>
       </Stack>
     </Box>
+  )
+}
+
+function BillingSection({ session, requests, itemLabelMap, loading, error, onRefresh }) {
+  const schedulePayments = useMemo(() => requests.filter(req => req.paymentAmount > 0), [requests])
+  const outstandingPayments = useMemo(
+    () => schedulePayments.filter(req => req.paymentStatus !== 'success'),
+    [schedulePayments],
+  )
+  const settledPayments = useMemo(
+    () => schedulePayments.filter(req => req.paymentStatus === 'success'),
+    [schedulePayments],
+  )
+
+  const outstandingTotal = useMemo(
+    () => outstandingPayments.reduce((sum, req) => sum + (req.paymentAmount || 0), 0),
+    [outstandingPayments],
+  )
+  const settledTotal = useMemo(
+    () => settledPayments.reduce((sum, req) => sum + (req.paymentAmount || 0), 0),
+    [settledPayments],
+  )
+
+  const summaryItems = [
+    {
+      label: 'Outstanding schedule payments',
+      value: outstandingTotal ? formatCurrency(outstandingTotal) : '—',
+      helper: `${outstandingPayments.length} request${outstandingPayments.length === 1 ? '' : 's'}`,
+      color: 'warning',
+    },
+    {
+      label: 'Total paid via scheduling',
+      value: settledTotal ? formatCurrency(settledTotal) : '—',
+      helper: `${settledPayments.length} payment${settledPayments.length === 1 ? '' : 's'}`,
+      color: 'success',
+    },
+  ]
+
+  return (
+    <section className="space-y-5">
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Stack spacing={0.5}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Wallet className="h-5 w-5 text-brand-600" />
+            <Typography variant="h6" fontWeight={600}>
+              Billing & payments
+            </Typography>
+          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            Track municipal invoices and payments tied to your special collection requests.
+          </Typography>
+        </Stack>
+        <Tooltip title="Refresh scheduling data" placement="left">
+          <span>
+            <IconButton onClick={onRefresh} size="small" disabled={loading}>
+              <RefreshCcw className="h-4 w-4" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
+
+      <Card className="glass-panel rounded-4xl border border-slate-200/70 bg-white/95 shadow-md">
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} justifyContent="space-between">
+            {summaryItems.map(item => (
+              <Box key={item.label} className="rounded-3xl border border-slate-200/60 bg-slate-50/70 px-5 py-4">
+                <Typography variant="subtitle2" color="text.secondary">
+                  {item.label}
+                </Typography>
+                <Typography variant="h5" fontWeight={600} mt={0.75}>
+                  {item.value}
+                </Typography>
+                <Typography variant="caption" color={item.color === 'success' ? 'success.main' : 'warning.main'}>
+                  {item.helper}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {error && (
+        <Alert severity="error" action={
+          <Button color="inherit" size="small" onClick={onRefresh}>
+            Retry
+          </Button>
+        }>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" py={6}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Stack spacing={4}>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Schedule payments awaiting collection
+            </Typography>
+            {outstandingPayments.length ? (
+              <Stack spacing={2.5}>
+                {outstandingPayments.map(request => {
+                  const key = request._id || request.id
+                  return <RequestCard key={key} request={request} itemLabelMap={itemLabelMap} variant="billing" />
+                })}
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No pending schedule payments right now. New requests that require payment will appear here.
+              </Typography>
+            )}
+          </Stack>
+
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Completed schedule payments
+            </Typography>
+            {settledPayments.length ? (
+              <Stack spacing={2.5}>
+                {settledPayments.map(request => {
+                  const key = request._id || request.id
+                  return <RequestCard key={key} request={request} itemLabelMap={itemLabelMap} variant="billing" />
+                })}
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No completed payments have been recorded yet.
+              </Typography>
+            )}
+          </Stack>
+
+          <Divider textAlign="left">Municipal invoices</Divider>
+
+          <BillingPage session={session} variant="embedded" />
+        </Stack>
+      )}
+    </section>
+  )
+}
+
+function UpcomingSection({ upcoming, itemLabelMap, loading, error, onRefresh }) {
+  return (
+    <section className="space-y-5">
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Stack spacing={0.5}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <CalendarClock className="h-5 w-5 text-brand-600" />
+            <Typography variant="h6" fontWeight={600}>
+              Upcoming pickups
+            </Typography>
+          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            Confirmed special collections that are scheduled for future slots.
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Refresh scheduling data" placement="left">
+            <span>
+              <IconButton onClick={onRefresh} size="small" disabled={loading}>
+                <RefreshCcw className="h-4 w-4" />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Button variant="contained" component={Link} to="/schedule">
+            Schedule pickup
+          </Button>
+        </Stack>
+      </Stack>
+
+      <Card className="glass-panel rounded-4xl border border-slate-200/70 bg-white/95 shadow-md">
+        <CardContent>
+          {error && (
+            <Alert severity="error" sx={{ mb: 3 }} action={
+              <Button color="inherit" size="small" onClick={onRefresh}>
+                Retry
+              </Button>
+            }>
+              {error}
+            </Alert>
+          )}
+
+          {loading ? (
+            <Box display="flex" justifyContent="center" py={6}>
+              <CircularProgress />
+            </Box>
+          ) : upcoming.length ? (
+            <Stack spacing={2.5}>
+              {upcoming.map(request => {
+                const key = request._id || request.id
+                return <RequestCard key={key} request={request} itemLabelMap={itemLabelMap} variant="upcoming" />
+              })}
+            </Stack>
+          ) : (
+            <Box className="rounded-3xl border border-dashed border-slate-200/80 bg-slate-50/60 px-6 py-8 text-center">
+              <Typography variant="subtitle1" fontWeight={600}>
+                No upcoming pickups
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={1.5}>
+                When you schedule a special collection, it will appear here with its assigned slot and payment status.
+              </Typography>
+              <Button variant="contained" component={Link} to="/schedule" sx={{ mt: 3 }}>
+                Book a special pickup
+              </Button>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  )
+}
+
+function HistorySection({ history, itemLabelMap, loading, onRefresh }) {
+  return (
+    <section className="space-y-5">
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <History className="h-5 w-5 text-brand-600" />
+          <Typography variant="h6" fontWeight={600}>
+            Pickup history
+          </Typography>
+        </Stack>
+        <Tooltip title="Refresh scheduling data" placement="left">
+          <span>
+            <IconButton onClick={onRefresh} size="small" disabled={loading}>
+              <RefreshCcw className="h-4 w-4" />
+            </IconButton>
+          </span>
+        </Tooltip>
+      </Stack>
+      <Typography variant="body2" color="text.secondary">
+        Completed, cancelled, and payment-pending requests from your account.
+      </Typography>
+
+      <Card className="glass-panel rounded-4xl border border-slate-200/70 bg-white/95 shadow-md">
+        <CardContent>
+          {loading && history.length === 0 ? (
+            <Box display="flex" justifyContent="center" py={6}>
+              <CircularProgress />
+            </Box>
+          ) : history.length ? (
+            <Stack spacing={2.5}>
+              {history.map(request => {
+                const key = request._id || request.id
+                return <RequestCard key={key} request={request} itemLabelMap={itemLabelMap} />
+              })}
+            </Stack>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              No pickup history recorded yet. Schedule a collection to see it logged here for your records.
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
+    </section>
   )
 }
 
@@ -304,35 +582,40 @@ export default function UserDashboard({ session = null }) {
 
   const handleNavigate = useCallback(sectionId => {
     setActiveSection(sectionId)
-    if (typeof document !== 'undefined') {
-      const element = document.getElementById(sectionId)
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }, [])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
+  const sectionProps = {
+    billing: {
+      session,
+      requests,
+      itemLabelMap,
+      loading,
+      error,
+      onRefresh: refresh,
+    },
+    'schedule-upcoming': {
+      upcoming,
+      itemLabelMap,
+      loading,
+      error,
+      onRefresh: refresh,
+    },
+    'schedule-history': {
+      history,
+      itemLabelMap,
+      loading,
+      onRefresh: refresh,
+    },
+  }
 
-    const observer = new IntersectionObserver(
-      entries => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id)
-          }
-        })
-      },
-      { rootMargin: '-50% 0px -45% 0px', threshold: 0.15 },
-    )
-
-    dashboardSections.forEach(section => {
-      const element = document.getElementById(section.id)
-      if (element) observer.observe(element)
-    })
-
-    return () => observer.disconnect()
-  }, [])
+  const ActiveSectionComponent = useMemo(() => {
+    if (activeSection === 'schedule-upcoming') return UpcomingSection
+    if (activeSection === 'schedule-history') return HistorySection
+    return BillingSection
+  }, [activeSection])
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10 lg:flex-row">
@@ -343,8 +626,8 @@ export default function UserDashboard({ session = null }) {
         onNavigate={handleNavigate}
       />
 
-      <div className="flex-1 space-y-12">
-        <section className="scroll-mt-28">
+      <div className="flex-1 space-y-8">
+        <section>
           <div className="glass-panel rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
             <Stack spacing={1.5}>
               <Typography variant="overline" color="text.secondary" fontWeight={600}>
@@ -354,127 +637,13 @@ export default function UserDashboard({ session = null }) {
                 {session?.name ? `Welcome back, ${session.name}` : 'Welcome to your dashboard'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Review your billing status, confirm upcoming pickups, and revisit past special collection requests in one place.
+                Use the sidebar to switch between billing, upcoming pickups, and your scheduling history.
               </Typography>
             </Stack>
           </div>
         </section>
 
-        <section id="billing" className="scroll-mt-28">
-          <Stack spacing={3}>
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <Wallet className="h-5 w-5 text-brand-600" />
-              <Typography variant="h6" fontWeight={600}>
-                Billing & payments
-              </Typography>
-            </Stack>
-            <BillingPage session={session} variant="embedded" />
-          </Stack>
-        </section>
-
-        <section id="schedule-upcoming" className="scroll-mt-28">
-          <Card className="glass-panel rounded-4xl border border-slate-200/70 bg-white/95 shadow-md">
-            <CardContent>
-              <Stack spacing={3}>
-                <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} gap={2}>
-                  <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={600}>
-                      Upcoming pickups
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Confirmed special collections that are scheduled for future slots.
-                    </Typography>
-                  </Stack>
-                  <Stack direction="row" spacing={1} alignItems="center" justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
-                    <Button
-                      variant="outlined"
-                      startIcon={<RefreshCcw size={16} />}
-                      onClick={refresh}
-                      disabled={loading}
-                    >
-                      Refresh
-                    </Button>
-                    <Button variant="contained" component={Link} to="/schedule">
-                      Schedule pickup
-                    </Button>
-                  </Stack>
-                </Stack>
-
-                {error && (
-                  <Alert severity="error" action={
-                    <Button color="inherit" size="small" onClick={refresh}>
-                      Retry
-                    </Button>
-                  }>
-                    {error}
-                  </Alert>
-                )}
-
-                {loading ? (
-                  <Box display="flex" justifyContent="center" py={6}>
-                    <CircularProgress />
-                  </Box>
-                ) : upcoming.length ? (
-                  <Stack spacing={2}>
-                    {upcoming.map(request => {
-                      const key = request._id || request.id
-                      return (
-                        <RequestCard key={key} request={request} itemLabelMap={itemLabelMap} variant="upcoming" />
-                      )
-                    })}
-                  </Stack>
-                ) : (
-                  <Box className="rounded-3xl border border-dashed border-slate-200/80 bg-slate-50/60 px-6 py-8 text-center">
-                    <Typography variant="subtitle1" fontWeight={600}>
-                      No upcoming pickups
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" mt={1.5}>
-                      When you schedule a special collection, it will appear here with its assigned slot and payment status.
-                    </Typography>
-                    <Button variant="contained" component={Link} to="/schedule" sx={{ mt: 3 }}>
-                      Book a special pickup
-                    </Button>
-                  </Box>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        </section>
-
-        <section id="schedule-history" className="scroll-mt-28">
-          <Card className="glass-panel rounded-4xl border border-slate-200/70 bg-white/95 shadow-md">
-            <CardContent>
-              <Stack spacing={3}>
-                <Stack direction="row" alignItems="center" spacing={2}>
-                  <History className="h-5 w-5 text-brand-600" />
-                  <Typography variant="h6" fontWeight={600}>
-                    Pickup history
-                  </Typography>
-                </Stack>
-                <Typography variant="body2" color="text.secondary">
-                  Completed, cancelled, and payment-pending requests from your account.
-                </Typography>
-                <Divider />
-                {loading && history.length === 0 ? (
-                  <Box display="flex" justifyContent="center" py={6}>
-                    <CircularProgress />
-                  </Box>
-                ) : history.length ? (
-                  <Stack spacing={2.5}>
-                    {history.map(request => {
-                      const key = request._id || request.id
-                      return <RequestCard key={key} request={request} itemLabelMap={itemLabelMap} />
-                    })}
-                  </Stack>
-                ) : (
-                  <Typography variant="body2" color="text.secondary">
-                    No pickup history recorded yet. Schedule a collection to see it logged here for your records.
-                  </Typography>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        </section>
+        <ActiveSectionComponent {...sectionProps[activeSection]} />
       </div>
     </div>
   )
