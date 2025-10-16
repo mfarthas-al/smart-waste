@@ -11,7 +11,6 @@ import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
 import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 import SpecialCollectionPage from './pages/Schedule/SpecialCollectionPage.jsx'
 import ReportsPage from './pages/Analytics/ReportsPage.jsx'
-import BillingPage from './pages/Billing/BillingPage.jsx'
 import CheckoutResultPage from './pages/Billing/CheckoutResultPage.jsx'
 import SpecialCollectionCheckoutResult from './pages/Schedule/SpecialCollectionCheckoutResult.jsx'
 
@@ -505,10 +504,6 @@ export default function App() {
             <Route
               path="/schedule/payment/result"
               element={sessionUser ? <SpecialCollectionCheckoutResult session={sessionUser} /> : <Navigate to="/login" replace />}
-            />
-            <Route
-              path="/billing"
-              element={sessionUser ? <BillingPage session={sessionUser} /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/billing/checkout"
