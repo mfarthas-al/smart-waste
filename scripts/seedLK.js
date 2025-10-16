@@ -7,6 +7,8 @@ const City = require('../backend/src/models/City');
 const WasteBin = require('../backend/src/models/WasteBin');
 const User = require('../backend/src/models/User');
 const WasteCollectionRecord = require('../backend/src/models/WasteCollectionRecord');
+const Bill = require('../backend/src/models/Bill');
+const PaymentTransaction = require('../backend/src/models/PaymentTransaction');
 
 const CITIES = [
   {
@@ -130,13 +132,16 @@ const makeCollectionRecords = () => {
       WasteBin.deleteMany({}),
       WasteCollectionRecord.deleteMany({}),
       User.deleteMany({}),
+      Bill.deleteMany({}),
+      PaymentTransaction.deleteMany({}),
     ]);
 
-    const [adminHash, regularHash] = await Promise.all([
+    const [adminHash, collectorHash, residentHash] = await Promise.all([
       User.hashPassword('Admin@123'),
       User.hashPassword('Collector@123'),
+      User.hashPassword('Resident@123'),
     ]);
-    await User.insertMany([
+    const [adminUser, collectorUser, residentUser] = await User.insertMany([
       {
         name: 'Nadeesha Perera',
         email: 'admin@smartwaste.lk',
@@ -146,7 +151,13 @@ const makeCollectionRecords = () => {
       {
         name: 'Chamika Fernando',
         email: 'collector@smartwaste.lk',
-        passwordHash: regularHash,
+        passwordHash: collectorHash,
+        role: 'regular',
+      },
+      {
+        name: 'Ishara Silva',
+        email: 'resident@smartwaste.lk',
+        passwordHash: residentHash,
         role: 'regular',
       },
     ]);
@@ -171,6 +182,73 @@ const makeCollectionRecords = () => {
     const collectionDocs = makeCollectionRecords();
     await WasteCollectionRecord.insertMany(collectionDocs);
     console.log(`✅ Seeded ${collectionDocs.length} waste collection records for analytics`);
+
+    const now = new Date();
+    const toDate = days => {
+      const d = new Date(now);
+      d.setDate(d.getDate() + days);
+      return d;
+    };
+
+    const billingDocs = [
+      {
+        userId: residentUser._id,
+        invoiceNumber: 'INV-2025-001',
+        description: 'Residential waste service - August 2025',
+        amount: 1850,
+        currency: 'LKR',
+        billingPeriodStart: toDate(-60),
+        billingPeriodEnd: toDate(-30),
+        generatedAt: toDate(-28),
+        dueDate: toDate(-5),
+        status: 'unpaid',
+      },
+      {
+        userId: residentUser._id,
+        invoiceNumber: 'INV-2025-002',
+        description: 'Residential waste service - September 2025',
+        amount: 1925,
+        currency: 'LKR',
+        billingPeriodStart: toDate(-30),
+        billingPeriodEnd: toDate(0),
+        generatedAt: toDate(-2),
+        dueDate: toDate(14),
+        status: 'unpaid',
+      },
+      {
+        userId: residentUser._id,
+        invoiceNumber: 'INV-2025-000',
+        description: 'Residential waste service - July 2025',
+        amount: 1780,
+        currency: 'LKR',
+        billingPeriodStart: toDate(-90),
+        billingPeriodEnd: toDate(-60),
+        generatedAt: toDate(-58),
+        dueDate: toDate(-30),
+        status: 'paid',
+        paidAt: toDate(-28),
+        paymentMethod: 'card',
+      },
+    ];
+
+    const insertedBills = await Bill.insertMany(billingDocs);
+    console.log(`✅ Seeded ${billingDocs.length} resident billing records`);
+
+    const paidBill = insertedBills.find(doc => doc.status === 'paid');
+    if (paidBill) {
+      await PaymentTransaction.create({
+        billId: paidBill._id,
+        userId: paidBill.userId,
+        amount: paidBill.amount,
+        currency: paidBill.currency,
+        status: 'success',
+        paymentMethod: paidBill.paymentMethod || 'card',
+        stripeSessionId: 'seed-session',
+        stripePaymentIntentId: 'seed-intent',
+        receiptUrl: 'https://example.com/demo-receipt.pdf',
+      });
+      console.log('✅ Seeded historical payment transaction for paid invoice');
+    }
 
   } catch (e) {
     console.error('❌ Seed failed:', e.message);

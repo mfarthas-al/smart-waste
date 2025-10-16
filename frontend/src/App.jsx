@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Avatar, IconButton, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material'
-import { MapPinned, ClipboardCheck, Truck, CalendarClock, Receipt, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
+import { MapPinned, ClipboardCheck, Truck, CalendarClock, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
 import './App.css'
 import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
 import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
@@ -11,12 +11,13 @@ import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
 import AdminDashboard from './pages/Dashboards/AdminDashboard.jsx'
 import SpecialCollectionPage from './pages/Schedule/SpecialCollectionPage.jsx'
 import ReportsPage from './pages/Analytics/ReportsPage.jsx'
+import CheckoutResultPage from './pages/Billing/CheckoutResultPage.jsx'
+import SpecialCollectionCheckoutResult from './pages/Schedule/SpecialCollectionCheckoutResult.jsx'
 
 const baseNavLinks = [
   { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
   { to: '/collector', label: 'Collector', description: 'Daily stop checklist', icon: ClipboardCheck },
   { to: '/schedule', label: 'Schedule', description: 'Pickup calendar', icon: CalendarClock },
-  { to: '/billing', label: 'Billing', description: 'Payments & invoices', icon: Receipt },
   { to: '/analytics', label: 'Analytics', description: 'Performance dashboards', icon: BarChart3 },
 ]
 
@@ -61,6 +62,49 @@ function Nav({ session, onSignOut }) {
     handleMenuClose()
     onSignOut()
   }
+
+  const menuItems = session
+    ? [
+        (
+          <MenuItem key="dashboard" component={NavLink} to={dashboardPath} onClick={handleMenuClose}>
+            <ListItemIcon>
+              {session.role === 'admin' ? (
+                <ShieldCheck className="h-4 w-4" />
+              ) : (
+                <UserCircle className="h-4 w-4" />
+              )}
+            </ListItemIcon>
+            {dashboardLabel}
+          </MenuItem>
+        ),
+        <Divider key="divider" sx={{ my: 0.5 }} component="li" />,
+        (
+          <MenuItem key="signout" onClick={handleSignOut}>
+            <ListItemIcon>
+              <LogOut className="h-4 w-4" />
+            </ListItemIcon>
+            Sign out
+          </MenuItem>
+        ),
+      ]
+    : [
+        (
+          <MenuItem key="signin" component={NavLink} to="/login" onClick={handleMenuClose}>
+            <ListItemIcon>
+              <LogIn className="h-4 w-4" />
+            </ListItemIcon>
+            Sign in
+          </MenuItem>
+        ),
+        (
+          <MenuItem key="register" component={NavLink} to="/register" onClick={handleMenuClose}>
+            <ListItemIcon>
+              <UserPlus className="h-4 w-4" />
+            </ListItemIcon>
+            Create account
+          </MenuItem>
+        ),
+      ];
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-800/60 bg-slate-950/90 backdrop-blur">
@@ -189,42 +233,7 @@ function Nav({ session, onSignOut }) {
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
           >
-            {session ? (
-              <>
-                <MenuItem component={NavLink} to={dashboardPath} onClick={handleMenuClose}>
-                  <ListItemIcon>
-                    {session.role === 'admin' ? (
-                      <ShieldCheck className="h-4 w-4" />
-                    ) : (
-                      <UserCircle className="h-4 w-4" />
-                    )}
-                  </ListItemIcon>
-                  {dashboardLabel}
-                </MenuItem>
-                <Divider sx={{ my: 0.5 }} />
-                <MenuItem onClick={handleSignOut}>
-                  <ListItemIcon>
-                    <LogOut className="h-4 w-4" />
-                  </ListItemIcon>
-                  Sign out
-                </MenuItem>
-              </>
-            ) : (
-              <>
-                <MenuItem component={NavLink} to="/login" onClick={handleMenuClose}>
-                  <ListItemIcon>
-                    <LogIn className="h-4 w-4" />
-                  </ListItemIcon>
-                  Sign in
-                </MenuItem>
-                <MenuItem component={NavLink} to="/register" onClick={handleMenuClose}>
-                  <ListItemIcon>
-                    <UserPlus className="h-4 w-4" />
-                  </ListItemIcon>
-                  Create account
-                </MenuItem>
-              </>
-            )}
+            {menuItems}
           </Menu>
         </div>
       </div>
@@ -471,6 +480,10 @@ export default function App() {
     setSessionUser(null)
   }
 
+  const handleSessionInvalid = useCallback(() => {
+    setSessionUser(null)
+  }, [])
+
   const currentYear = new Date().getFullYear()
   const reroutePath = sessionUser?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
 
@@ -486,9 +499,16 @@ export default function App() {
             <Route path="/collector" element={<CollectorView />} />
             <Route
               path="/schedule"
-              element={sessionUser ? <SpecialCollectionPage session={sessionUser} /> : <Navigate to="/login" replace />}
+              element={sessionUser ? <SpecialCollectionPage session={sessionUser} onSessionInvalid={handleSessionInvalid} /> : <Navigate to="/login" replace />}
             />
-            <Route path="/billing" element={<div className="glass-panel mx-auto max-w-3xl rounded-3xl p-8 text-slate-600 shadow-md">Billing features are being prepared.</div>} />
+            <Route
+              path="/schedule/payment/result"
+              element={sessionUser ? <SpecialCollectionCheckoutResult session={sessionUser} /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="/billing/checkout"
+              element={sessionUser ? <CheckoutResultPage session={sessionUser} /> : <Navigate to="/login" replace />}
+            />
             <Route
               path="/analytics"
               element={sessionUser?.role === 'admin' ? <ReportsPage session={sessionUser} /> : <Navigate to={sessionUser ? '/userDashboard' : '/login'} replace />}
@@ -503,11 +523,15 @@ export default function App() {
             />
             <Route
               path="/userDashboard"
-              element={sessionUser ? <UserDashboard /> : <Navigate to="/login" replace />}
+              element={sessionUser ? <UserDashboard session={sessionUser} /> : <Navigate to="/login" replace />}
             />
             <Route
               path="/adminDashboard"
               element={sessionUser?.role === 'admin' ? <AdminDashboard /> : <Navigate to="/login" replace />}
+            />
+            <Route
+              path="*"
+              element={<Navigate to={sessionUser ? reroutePath : '/login'} replace />}
             />
           </Routes>
         </main>
