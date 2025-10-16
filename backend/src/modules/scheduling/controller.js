@@ -191,7 +191,15 @@ async function checkAvailability(req, res, next) {
     }
 
     const candidates = generateCandidateSlots(preferred, SLOT_CONFIG);
-    const availableSlots = await attachAvailability(candidates);
+    const preferredDayStart = new Date(preferred);
+    preferredDayStart.setHours(0, 0, 0, 0);
+    const preferredDayEnd = new Date(preferredDayStart);
+    preferredDayEnd.setDate(preferredDayEnd.getDate() + 1);
+
+    const sameDayCandidates = candidates.filter(candidate => (
+      candidate.start >= preferredDayStart && candidate.start < preferredDayEnd
+    ));
+    const availableSlots = await attachAvailability(sameDayCandidates);
     const payment = calculatePayment(policy, payload.quantity);
 
     return res.json({
