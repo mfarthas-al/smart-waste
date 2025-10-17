@@ -1,782 +1,49 @@
-import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck, Check } from 'lucide-react'
+import { CheckCircle2, Clock3, Info, Truck } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography, Stepper, Step, StepLabel, Tooltip, } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Grid,
+  Stack,
+  Step,
+  StepLabel,
+  Stepper,
+  Typography,
+} from '@mui/material'
 import dayjs from 'dayjs'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import { DateCalendar } from '@mui/x-date-pickers/DateCalendar'
-import { DigitalClock } from '@mui/x-date-pickers/DigitalClock'
-
 import { useNavigate } from 'react-router-dom'
 import ConfirmationIllustration from '../../assets/Confirmation.png'
-
-const initialFormState = {
-  residentName: '',
-  ownerName: '',
-  address: '',
-  district: '',
-  email: '',
-  phone: '',
-  itemType: '',
-  preferredDate: '',
-  preferredTime: '',
-  approxWeight: '',
-  quantity: 1,
-  specialNotes: '',
-}
-
-const REQUEST_STATUSES = {
-  scheduled: { label: 'Scheduled', color: 'success' },
-  cancelled: { label: 'Cancelled', color: 'default' },
-  'pending-payment': { label: 'Pending payment', color: 'warning' },
-  'payment-failed': { label: 'Payment failed', color: 'error' },
-}
-
-const PAYMENT_STATUSES = {
-  success: { label: 'Payment success', color: 'success' },
-  pending: { label: 'Payment pending', color: 'warning' },
-  failed: { label: 'Payment failed', color: 'error' },
-  'not-required': { label: 'No payment required', color: 'default' },
-}
-
-const currencyFormatter = new Intl.NumberFormat('en-LK', {
-  style: 'currency',
-  currency: 'LKR',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-const TAX_RATE_PERCENT = 3
-
-function formatCurrency(amount) {
-  const value = Number(amount)
-  if (!Number.isFinite(value)) return currencyFormatter.format(0)
-  return currencyFormatter.format(value)
-}
-
-function toLocalDateValue(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function combineDateAndTime(date, time) {
-  if (!date || !time) return ''
-  return `${date}T${time}`
-}
-
-function serializeDateTime(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toISOString()
-}
-
-function formatRequestTimestamp(value) {
-  if (!value) return '—'
-  return new Date(value).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-function formatSlotRange(slot) {
-  if (!slot?.start) return 'Awaiting assignment'
-  try {
-    const formatter = new Intl.DateTimeFormat('en-GB', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    })
-    const start = formatter.format(new Date(slot.start))
-    const end = slot.end ? formatter.format(new Date(slot.end)) : null
-    return end ? `${start} → ${end}` : start
-  } catch {
-    return 'Awaiting assignment'
-  }
-}
-
-function getSessionId(session) {
-  return session?.id || session?._id || ''
-}
-
-async function safeJson(response) {
-  const text = await response.text()
-  if (!text) return null
-  try {
-    return JSON.parse(text)
-  } catch (error) {
-    console.warn('Failed to parse JSON payload', error)
-    return null
-  }
-}
-
-function useSpecialCollectionConfig() {
-  const [state, setState] = useState({ loading: true, error: null, items: [], slotConfig: null })
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadConfig() {
-      try {
-        const response = await fetch('/api/schedules/special/config')
-        const payload = await safeJson(response)
-        if (cancelled) return
-
-        if (!response.ok || payload?.ok === false) {
-          throw new Error(payload?.message || 'Unable to load scheduling configuration')
-        }
-
-        setState({
-          loading: false,
-          error: null,
-          items: payload?.items ?? [],
-          slotConfig: payload?.slotConfig ?? null,
-        })
-      } catch (error) {
-        if (!cancelled) {
-          setState({ loading: false, error: error.message, items: [], slotConfig: null })
-        }
-      }
-    }
-
-    loadConfig()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  return state
-}
-
-function useResidentRequests(sessionId, onSessionInvalid) {
-  const [state, setState] = useState({ loading: false, error: null, requests: [] })
-
-  const load = useCallback(async () => {
-    if (!sessionId) {
-      setState({ loading: false, error: null, requests: [] })
-      return
-    }
-
-    setState(prev => ({ ...prev, loading: true, error: null }))
-
-    try {
-      const response = await fetch(`/api/schedules/special/my?userId=${encodeURIComponent(sessionId)}`)
-      const payload = await safeJson(response)
-
-      if (!response.ok || payload?.ok === false) {
-        const message = payload?.message || 'Unable to load your scheduled pickups'
-        if (response.status === 403 || response.status === 404) {
-          onSessionInvalid?.(message)
-          return
-        }
-        throw new Error(message)
-      }
-
-      setState({ loading: false, error: null, requests: payload?.requests ?? [] })
-    } catch (error) {
-      setState(prev => ({ ...prev, loading: false, error: error.message, requests: [] }))
-    }
-  }, [sessionId, onSessionInvalid])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  return { ...state, refresh: load }
-}
-
-function RequestForm({
-  form,
-  allowedItems,
-  selectedPolicy,
-  onChange,
-  onSubmit,
-  availabilityLoading,
-  isAuthenticated,
-  onRequireAuth,
-  errors,
-  touched,
-  onBlur,
-  onReset,
-  isFormValid,
-  slotConfig,
-}) {
-  const dateValue = useMemo(() => (form.preferredDate ? dayjs(form.preferredDate) : null), [form.preferredDate])
-  const timeValue = useMemo(() => (form.preferredTime ? dayjs(`1970-01-01T${form.preferredTime}`) : null), [form.preferredTime])
-
-  const handleDateChange = useCallback((newValue) => {
-    const formatted = newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : ''
-    onChange({ target: { name: 'preferredDate', value: formatted } })
-  }, [onChange])
-
-  const handleTimeChange = useCallback((newValue) => {
-    const formatted = newValue && newValue.isValid() ? newValue.format('HH:mm') : ''
-    onChange({ target: { name: 'preferredTime', value: formatted } })
-  }, [onChange])
-
-  const pickerBoxSx = { border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1, minHeight: 340, display: 'flex', alignItems: 'center', justifyContent: 'center' }
-
-  // Config-driven constraints with safe defaults
-  const maxDaysAhead = slotConfig?.daysAhead ?? 30
-  const disableWeekends = Boolean(slotConfig?.disableWeekends)
-  const hoursStart = slotConfig?.hours?.start ?? '08:00'
-  const hoursEnd = slotConfig?.hours?.end ?? '18:00'
-  const minDate = dayjs().startOf('day')
-  const maxDate = dayjs().add(maxDaysAhead, 'day')
-  const minTime = dayjs(`1970-01-01T${hoursStart}`)
-  const maxTime = dayjs(`1970-01-01T${hoursEnd}`)
-
-  const setQuickDate = useCallback((when) => {
-    let d = dayjs().startOf('day')
-    if (when === 'tomorrow') d = d.add(1, 'day')
-    if (when === 'nextMon') {
-      const daysUntilMon = (8 - d.day()) % 7 || 7
-      d = d.add(daysUntilMon, 'day')
-    }
-    onChange({ target: { name: 'preferredDate', value: d.format('YYYY-MM-DD') } })
-  }, [onChange])
-
-  const setQuickTime = useCallback((hhmm) => {
-    onChange({ target: { name: 'preferredTime', value: hhmm } })
-  }, [onChange])
-
-  return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
-        <Stack component="form" spacing={4} onSubmit={onSubmit}>
-          <Typography variant="h6" fontWeight={600}>
-            Request details
-          </Typography>
-
-          <Box sx={{ px: { xs: 1.5, md: 1.5 } }}>
-            <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Resident name"
-                name="residentName"
-                value={form.residentName}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                fullWidth
-                error={Boolean(touched.residentName && errors.residentName)}
-                helperText={touched.residentName && errors.residentName}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Owner's name"
-                name="ownerName"
-                value={form.ownerName}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                fullWidth
-                error={Boolean(touched.ownerName && errors.ownerName)}
-                helperText={touched.ownerName && errors.ownerName}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Email"
-                name="email"
-                type="email"
-                value={form.email}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                fullWidth
-                error={Boolean(touched.email && errors.email)}
-                helperText={touched.email && errors.email}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="Phone"
-                name="phone"
-                value={form.phone}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                fullWidth
-                type="tel"
-                inputProps={{ pattern: "[0-9+\\-()\\s]{7,}" }}
-                error={Boolean(touched.phone && errors.phone)}
-                helperText={touched.phone && errors.phone}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Address"
-                name="address"
-                value={form.address}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                fullWidth
-                multiline
-                minRows={2}
-                error={Boolean(touched.address && errors.address)}
-                helperText={touched.address && errors.address}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                label="District"
-                name="district"
-                value={form.district}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                fullWidth
-                error={Boolean(touched.district && errors.district)}
-                helperText={touched.district && errors.district}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth required>
-                <InputLabel id="itemType-label">Item type</InputLabel>
-                <Select
-                  labelId="itemType-label"
-                  name="itemType"
-                  label="Item type"
-                  value={form.itemType}
-                  onChange={onChange}
-                  disabled={!allowedItems.length}
-                >
-                  {allowedItems.map(item => (
-                    <MenuItem key={item.id} value={item.id}>
-                      {item.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                label="Approx. weight (kg per item)"
-                name="approxWeight"
-                type="number"
-                value={form.approxWeight}
-                onChange={onChange}
-                onBlur={onBlur}
-                inputProps={{ min: 0, step: 0.1 }}
-                required
-                fullWidth
-                error={Boolean(touched.approxWeight && errors.approxWeight)}
-                helperText={touched.approxWeight && errors.approxWeight}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                label="Quantity"
-                name="quantity"
-                type="number"
-                value={form.quantity}
-                onChange={onChange}
-                onBlur={onBlur}
-                inputProps={{ min: 1 }}
-                required
-                fullWidth
-                error={Boolean(touched.quantity && errors.quantity)}
-                helperText={touched.quantity && errors.quantity}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Stack spacing={1.25} sx={{ height: '100%' }}>
-                <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 700 }}>
-                  Set Date:
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Chip size="small" label="Today" onClick={() => setQuickDate('today')} variant="outlined" />
-                  <Chip size="small" label="Tomorrow" onClick={() => setQuickDate('tomorrow')} variant="outlined" />
-                  <Chip size="small" label="Next Mon" onClick={() => setQuickDate('nextMon')} variant="outlined" />
-                </Stack>
-                <Box sx={{ ...pickerBoxSx, flexGrow: 1 }}>
-                  <DateCalendar
-                    value={dateValue}
-                    onChange={handleDateChange}
-                    disablePast
-                    minDate={minDate}
-                    maxDate={maxDate}
-                    shouldDisableDate={disableWeekends ? (d) => [0,6].includes(d.day()) : undefined}
-                  />
-                </Box>
-                {touched.preferredDate && errors.preferredDate ? (
-                  <Typography variant="caption" color="error.main">{errors.preferredDate}</Typography>
-                ) : null}
-              </Stack>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Stack spacing={1.25} sx={{ height: '100%' }}>
-                <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 700 }}>
-                  Set Time:
-                </Typography>
-                <Stack direction="row" spacing={1} flexWrap="wrap">
-                  <Chip size="small" label="9:00 AM" onClick={() => setQuickTime('09:00')} variant="outlined" />
-                  <Chip size="small" label="10:00 AM" onClick={() => setQuickTime('10:00')} variant="outlined" />
-                  <Chip size="small" label="1:00 PM" onClick={() => setQuickTime('13:00')} variant="outlined" />
-                  <Chip size="small" label="3:00 PM" onClick={() => setQuickTime('15:00')} variant="outlined" />
-                </Stack>
-                <Box sx={{ ...pickerBoxSx, flexGrow: 1 }}>
-                  <DigitalClock
-                    value={timeValue}
-                    onChange={handleTimeChange}
-                    ampm
-                    minutesStep={15}
-                    minTime={minTime}
-                    maxTime={maxTime}
-                    skipDisabled
-                    timeStep={30}
-                  />
-                </Box>
-                {touched.preferredTime && errors.preferredTime ? (
-                  <Typography variant="caption" color="error.main">{errors.preferredTime}</Typography>
-                ) : null}
-              </Stack>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Special handling notes"
-                name="specialNotes"
-                value={form.specialNotes}
-                onChange={onChange}
-                onBlur={onBlur}
-                multiline
-                minRows={3}
-                fullWidth
-              />
-            </Grid>
-            </Grid>
-          </Box>
-
-          {selectedPolicy?.description ? (
-            <Alert severity="info" icon={<Info size={18} />}>
-              {selectedPolicy.description}
-            </Alert>
-          ) : null}
-
-          <Box sx={{ flexGrow: 1 }} />
-
-          <Stack direction="row" flexWrap="wrap" spacing={2} alignItems="center">
-            <Tooltip title={!isAuthenticated ? 'Please sign in to continue' : (!isFormValid ? 'Please complete required fields' : '')}>
-              <span>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={!isAuthenticated || availabilityLoading || !isFormValid}
-                >
-                  {availabilityLoading ? 'Checking…' : 'Check availability'}
-                </Button>
-              </span>
-            </Tooltip>
-            {!isAuthenticated && (
-              <Button variant="outlined" onClick={onRequireAuth}>
-                Sign in to continue
-              </Button>
-            )}
-            <Button variant="text" color="inherit" onClick={onReset} disabled={availabilityLoading}>
-              Reset form
-            </Button>
-          </Stack>
-        </Stack>
-      </CardContent>
-    </Card>
-  )
-}
-
-function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFlight }) {
-  const slots = availability?.slots ?? []
-  const payment = availability?.payment
-  const totalWeightKg = Number(payment?.totalWeightKg ?? 0)
-  const weightChargeAmount = Number(payment?.weightCharge ?? 0)
-  const taxAmount = Number(payment?.taxCharge ?? 0)
-
-  if (!availability) return null
-
-  return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
-        <Stack spacing={3}>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <CalendarClock className="h-5 w-5 text-brand-600" />
-            <Typography variant="h6" fontWeight={600}>
-              Available slots
-            </Typography>
-          </Stack>
-
-          {loading ? (
-            <Box display="flex" justifyContent="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : slots.length === 0 ? (
-            <Alert severity="warning">
-              No slots are available in the requested window. Please try a different time or date.
-            </Alert>
-          ) : (
-            <Grid container spacing={3}>
-              {slots.map(slot => (
-                <Grid item xs={12} md={6} key={slot.slotId}>
-                  <Card className="hover-lift rounded-3xl border border-slate-200/70 shadow-sm">
-                    <CardContent>
-                      <Stack spacing={2}>
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <Clock3 className="h-4 w-4 text-brand-600" />
-                          <Typography variant="subtitle2" fontWeight={600}>
-                            {formatSlotRange(slot)}
-                          </Typography>
-                        </div>
-                        <Typography variant="body2" color="text.secondary">
-                          Capacity remaining: {slot.capacityLeft}
-                        </Typography>
-                        {payment?.required ? (
-                          <Alert severity="info" icon={<Info size={18} />}>
-                            Payment required: {formatCurrency(payment.amount)}.
-                            {totalWeightKg > 0 ? (
-                              <>
-                                {' '}
-                                Estimated total weight: {totalWeightKg.toFixed(1)} kg.
-                              </>
-                            ) : null}
-                            {weightChargeAmount > 0 ? (
-                              <>
-                                {' '}
-                                Weight surcharge included: {formatCurrency(weightChargeAmount)}.
-                              </>
-                            ) : null}
-                            {taxAmount > 0 ? (
-                              <>
-                                {' '}
-                                Taxes applied: {formatCurrency(taxAmount)}.
-                              </>
-                            ) : null}
-                            {' '}
-                            Pay now to confirm immediately or choose to pay later from My Bills. Payment must be completed before the slot begins.
-                          </Alert>
-                        ) : (
-                          <Alert severity="success" icon={<CheckCircle2 size={18} />}>
-                            No payment required for this request.
-                            {totalWeightKg > 0 ? (
-                              <>
-                                {' '}
-                                Estimated total weight: {totalWeightKg.toFixed(1)} kg.
-                              </>
-                            ) : null}
-                          </Alert>
-                        )}
-                        <Button
-                          variant="contained"
-                          onClick={() => onConfirmSlot(slot)}
-                          disabled={bookingInFlight}
-                        >
-                          {bookingInFlight ? 'Processing…' : 'Confirm this slot'}
-                        </Button>
-                      </Stack>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
-  )
-}
-
-function SummaryRow({ label, amount, helper, prefix = '' }) {
-  return (
-    <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={3}>
-      <Stack spacing={0.5}>
-        <Typography variant="body2" fontWeight={600}>
-          {label}
-        </Typography>
-        {helper ? (
-          <Typography variant="caption" color="text.secondary">
-            {helper}
-          </Typography>
-        ) : null}
-      </Stack>
-      <Typography variant="body2" fontWeight={600} color="text.primary">
-        {prefix}
-        {formatCurrency(amount)}
-      </Typography>
-    </Stack>
-  )
-}
-
-function PaymentSummary({ payment, showBreakdown = false }) {
-  const subtotal = Number(payment?.baseCharge ?? 0)
-  const extraCharges = Number(payment?.weightCharge ?? 0)
-  const taxCharge = Number(payment?.taxCharge ?? 0)
-  const total = Number(payment?.amount ?? 0)
-
-  return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
-        <Stack spacing={2.5}>
-          <Typography variant="h6" fontWeight={600}>
-            Payment details
-          </Typography>
-
-          {payment ? (
-            <Stack spacing={2}>
-              <SummaryRow label="Subtotal" amount={subtotal} />
-              <SummaryRow
-                label="Extra charges"
-                amount={extraCharges}
-                prefix="+ "
-                helper={showBreakdown ? 'Extra charges are based on Approx. Weight' : undefined}
-              />
-              <SummaryRow
-                label="Tax"
-                amount={taxCharge}
-                prefix="+ "
-                helper={`Municipal levy (${TAX_RATE_PERCENT}%)`}
-              />
-
-              <Divider flexItem sx={{ my: 1 }} />
-
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="subtitle1" fontWeight={700}>
-                  Total
-                </Typography>
-                <Typography variant="subtitle1" fontWeight={700} color="primary.main">
-                  {formatCurrency(total)}
-                </Typography>
-              </Stack>
-              <Typography variant="caption" color="text.secondary">
-                (Subtotal + Extra charges + Tax)
-              </Typography>
-              {!payment.required || total <= 0 ? (
-                <Alert severity="success" icon={<CheckCircle2 size={18} />}>
-                  No payment required for this request.
-                </Alert>
-              ) : null}
-            </Stack>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Enter your request details and check availability to see the estimated charges for your pickup.
-            </Typography>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ScheduledRequests({ requests, loading, error, allowedItems, onRefresh }) {
-  const decorated = useMemo(
-    () => requests.map(request => {
-      const totalWeight = Number(request.totalWeightKg)
-      return {
-        id: request._id || request.id,
-        itemLabel: allowedItems.find(item => item.id === request.itemType)?.label || request.itemType,
-        quantity: request.quantity,
-        totalWeightKg: Number.isFinite(totalWeight) ? totalWeight : null,
-        createdAt: request.createdAt,
-        slot: request.slot,
-        status: REQUEST_STATUSES[request.status] || REQUEST_STATUSES.scheduled,
-        paymentStatus: PAYMENT_STATUSES[request.paymentStatus] || PAYMENT_STATUSES['not-required'],
-      }
-    }),
-    [requests, allowedItems],
-  )
-
-  return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
-      <CardContent>
-        <Stack spacing={3}>
-          <Stack direction="row" alignItems="center" spacing={2} justifyContent="space-between">
-            <Stack direction="row" alignItems="center" spacing={2}>
-              <MailCheck className="h-5 w-5 text-brand-600" />
-              <Typography variant="h6" fontWeight={600}>
-                Your scheduled pickups
-              </Typography>
-            </Stack>
-            <IconButton
-              aria-label="Refresh scheduled pickups"
-              onClick={onRefresh}
-              disabled={loading}
-              size="small"
-            >
-              <RefreshCcw className="h-4 w-4" />
-            </IconButton>
-          </Stack>
-          {error ? (
-            <Alert severity="error">{error}</Alert>
-          ) : null}
-          {loading && !decorated.length ? (
-            <Box display="flex" justifyContent="center" py={4}>
-              <CircularProgress />
-            </Box>
-          ) : decorated.length ? (
-            <Stack spacing={2}>
-              {decorated.map(request => (
-                <Box
-                  key={request.id}
-                  className="rounded-2xl border border-slate-200/60 bg-white/80 px-4 py-3"
-                >
-                  <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
-                    <div>
-                      <Typography variant="subtitle1" fontWeight={600}>
-                        {request.itemLabel}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Quantity: {request.quantity}
-                      </Typography>
-                      {request.totalWeightKg && request.totalWeightKg > 0 ? (
-                        <Typography variant="body2" color="text.secondary">
-                          Estimated total weight: {request.totalWeightKg.toFixed(1)} kg
-                        </Typography>
-                      ) : null}
-                      <Typography variant="body2" color="text.secondary">
-                        Requested on {formatRequestTimestamp(request.createdAt)}
-                      </Typography>
-                    </div>
-                    <Stack spacing={1} alignItems={{ xs: 'flex-start', md: 'flex-end' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        {formatSlotRange(request.slot)}
-                      </Typography>
-                      <Stack direction="row" spacing={1} flexWrap="wrap">
-                        <Chip
-                          label={request.status.label}
-                          color={request.status.color}
-                          size="small"
-                          variant={request.status.color === 'success' ? 'filled' : 'outlined'}
-                        />
-                        <Chip
-                          label={request.paymentStatus.label}
-                          color={request.paymentStatus.color}
-                          size="small"
-                          variant="outlined"
-                        />
-                      </Stack>
-                    </Stack>
-                  </Stack>
-                </Box>
-              ))}
-            </Stack>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              You have not scheduled any special pickups yet.
-            </Typography>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
-  )
-}
+import { INITIAL_FORM_STATE } from './constants.js'
+import { AvailabilitySection } from './components/AvailabilitySection.jsx'
+import { PaymentSummary } from './components/PaymentSummary.jsx'
+import { RequestForm } from './components/RequestForm.jsx'
+import { ScheduledRequests } from './components/ScheduledRequests.jsx'
+import { useResidentRequests } from './hooks/useResidentRequests.js'
+import { useSpecialCollectionConfig } from './hooks/useSpecialCollectionConfig.js'
+import {
+  combineDateAndTime,
+  formatCurrency,
+  formatSlotRange,
+  getSessionId,
+  safeJson,
+  serializeDateTime,
+} from './utils.js'
 
 function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
   if (!details) return null
 
-  const itemLabel = useMemo(() => {
-    return allowedItems.find(i => i.id === details.request.itemType)?.label || details.request.itemType
-  }, [allowedItems, details.request.itemType])
+  const itemLabel = allowedItems.find(i => i.id === details.request.itemType)?.label || details.request.itemType
 
   const scheduledDate = details.scheduled?.date ? dayjs(details.scheduled.date).format('DD/MM/YYYY') : '—'
   const scheduledTime = details.scheduled?.time ? dayjs(`1970-01-01T${details.scheduled.time}`).format('hh:mm A') : '—'
@@ -956,6 +223,26 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
             </Box>
           </Grid>
         </Grid>
+
+        {(onEdit || onBack) ? (
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1.5}
+            justifyContent="flex-end"
+            sx={{ mt: 2 }}
+          >
+            {onEdit ? (
+              <Button variant="outlined" onClick={onEdit}>
+                Schedule another pickup
+              </Button>
+            ) : null}
+            {onBack ? (
+              <Button variant="text" onClick={onBack}>
+                Back to previous page
+              </Button>
+            ) : null}
+          </Stack>
+        ) : null}
       </CardContent>
     </Card>
   )
@@ -987,7 +274,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const allowedItems = useMemo(() => items.filter(item => item.allow), [items])
 
   const [form, setForm] = useState(() => ({
-    ...initialFormState,
+    ...INITIAL_FORM_STATE,
     ...sessionDefaults,
   }))
   useEffect(() => {
@@ -1085,7 +372,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   }, [])
 
   const handleResetForm = useCallback(() => {
-    setForm({ ...initialFormState, ...sessionDefaults })
+  setForm({ ...INITIAL_FORM_STATE, ...sessionDefaults })
     setTouched({})
     setAvailability(null)
     setFormError(null)
@@ -1250,11 +537,11 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       setAvailability(null)
       setForm(prev => ({
         ...prev,
-        preferredDate: initialFormState.preferredDate,
-        preferredTime: initialFormState.preferredTime,
-        approxWeight: initialFormState.approxWeight,
-        quantity: initialFormState.quantity,
-        specialNotes: initialFormState.specialNotes,
+        preferredDate: INITIAL_FORM_STATE.preferredDate,
+        preferredTime: INITIAL_FORM_STATE.preferredTime,
+        approxWeight: INITIAL_FORM_STATE.approxWeight,
+        quantity: INITIAL_FORM_STATE.quantity,
+        specialNotes: INITIAL_FORM_STATE.specialNotes,
       }))
       refreshRequests()
     } catch (error) {
@@ -1462,13 +749,13 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           />
         )}
 
-    <ScheduledRequests
-      requests={requests}
-      loading={requestsLoading}
-      error={requestsError}
-      allowedItems={allowedItems}
-      onRefresh={refreshRequests}
-    />
+        <ScheduledRequests
+          requests={requests}
+          loading={requestsLoading}
+          error={requestsError}
+          allowedItems={allowedItems}
+          onRefresh={refreshRequests}
+        />
 
         <Dialog
           open={paymentChoiceOpen}

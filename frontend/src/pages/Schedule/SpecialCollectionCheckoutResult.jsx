@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, CircularProgress, Stack, Typography } from '@mui/material'
+import { Alert, Box, Card, CardContent, CircularProgress, Stack, Typography } from '@mui/material'
 import { XCircle } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import ConfirmationIllustration from '../../assets/Confirmation.png'

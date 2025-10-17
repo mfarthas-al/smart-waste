@@ -121,7 +121,7 @@ describe('ManageCollectionOpsPage', () => {
   beforeEach(() => {
     optimizeShouldFail = false
 
-    fetchMock = vi.fn(async (input, init = {}) => {
+  fetchMock = vi.fn(async (input) => {
       const url = typeof input === 'string' ? input : input.url
 
       if (url.endsWith('/api/ops/cities')) {

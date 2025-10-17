@@ -12,7 +12,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      include: ['src/pages/ManageCollectionOps/reporting.js'],
+      all: true,
+      include: ['src/**/*.{js,jsx}'],
+      exclude: [
+        'src/setupTests.js',
+        'src/pages/Auth/**',
+        'src/pages/Dashboards/**',
+      ],
       thresholds: {
         statements: 0.8,
         branches: 0.8,
