@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography, Stepper, Step, StepLabel, Tooltip } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography, Stepper, Step, StepLabel, Tooltip, } from '@mui/material'
 import dayjs from 'dayjs'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
@@ -553,7 +553,7 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
                               </>
                             ) : null}
                             {' '}
-                            Completing payment will confirm this slot.
+                            Pay now to confirm immediately or choose to pay later from My Bills. Payment must be completed before the slot begins.
                           </Alert>
                         ) : (
                           <Alert severity="success" icon={<CheckCircle2 size={18} />}>
@@ -789,19 +789,59 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
   const tax = Number(details.payment?.taxCharge ?? 0)
   const total = Number(details.payment?.amount ?? 0)
 
+  const paymentStatus = details.request.paymentStatus || (total > 0 ? 'success' : 'not-required')
+  const isPaymentPending = paymentStatus === 'pending'
+  const isPaymentSuccessful = paymentStatus === 'success'
+  const isPaymentNotRequired = paymentStatus === 'not-required'
+  const statusColor = isPaymentPending ? 'warning.main' : 'success.main'
+  const headingText = isPaymentPending
+    ? 'Payment Pending'
+    : isPaymentNotRequired
+      ? 'Request Confirmed'
+      : 'Payment Successful'
+  const headingIcon = isPaymentPending
+    ? <Clock3 size={32} color="#ea580c" />
+    : <CheckCircle2 size={32} color="#097969" />
+  const paymentDueMessage = details.request.paymentDueAt
+    ? dayjs(details.request.paymentDueAt).format('DD MMM YYYY, hh:mm A')
+    : details.scheduled?.slotStart
+      ? dayjs(details.scheduled.slotStart).format('DD MMM YYYY, hh:mm A')
+      : null
+
   return (
     <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
       <CardContent>
         <Grid container spacing={3} alignItems="stretch">
           <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ width: 70, height: 70, borderRadius: '50%', border: '8px solid', borderColor: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle2 size={32} color="#097969" />
+              <Box sx={{ width: 70, height: 70, borderRadius: '50%', border: '8px solid', borderColor: statusColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {headingIcon}
               </Box>
-              <Typography variant="h4" fontWeight={700} color="success.main">
-                Payment Successful
+              <Typography variant="h4" fontWeight={700} sx={{ color: statusColor }}>
+                {headingText}
               </Typography>
             </Stack>
+
+            {isPaymentPending ? (
+              <Alert severity="warning" icon={<Clock3 size={18} />}>
+                This booking is reserved, but payment is still outstanding.{' '}
+                {paymentDueMessage
+                  ? `Please settle the bill before ${paymentDueMessage} to avoid automatic cancellation.`
+                  : 'Please complete your payment before the scheduled slot to avoid automatic cancellation.'}
+              </Alert>
+            ) : null}
+
+            {isPaymentSuccessful ? (
+              <Typography variant="body2" color="text.secondary">
+                Your payment has been received. A confirmation email and receipt will be sent shortly.
+              </Typography>
+            ) : null}
+
+            {isPaymentNotRequired ? (
+              <Typography variant="body2" color="text.secondary">
+                No payment was required for this pickup. Your booking is confirmed.
+              </Typography>
+            ) : null}
 
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
@@ -957,6 +997,8 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const [availability, setAvailability] = useState(null)
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [bookingInFlight, setBookingInFlight] = useState(false)
+  const [paymentChoiceOpen, setPaymentChoiceOpen] = useState(false)
+  const [selectedSlot, setSelectedSlot] = useState(null)
   const [feedback, setFeedback] = useState(null)
   const [confirmation, setConfirmation] = useState(null)
   const [formError, setFormError] = useState(null)
@@ -1100,7 +1142,8 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     sessionId,
   ])
 
-  const submitBooking = useCallback(async (slot, paymentStatus, paymentReference) => {
+  const submitBooking = useCallback(async (slot, options = {}) => {
+    const { paymentStatus, paymentReference, deferPayment } = options
     setBookingInFlight(true)
     try {
       const combinedDateTime = combineDateAndTime(form.preferredDate, form.preferredTime)
@@ -1127,6 +1170,9 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       if (paymentReference) {
         payload.paymentReference = paymentReference
       }
+      if (deferPayment) {
+        payload.deferPayment = true
+      }
 
       const response = await fetch('/api/schedules/special/confirm', {
         method: 'POST',
@@ -1138,6 +1184,8 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       if (!response.ok || result?.ok === false) {
         throw new Error(result?.message || 'Unable to schedule the selected slot.')
       }
+
+      const requestDoc = result?.request || {}
 
       // Capture confirmation snapshot before clearing state
       setConfirmation({
@@ -1152,8 +1200,20 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           quantity: form.quantity,
           approxWeight: form.approxWeight,
           specialNotes: form.specialNotes,
+          status: requestDoc.status,
+          paymentStatus: requestDoc.paymentStatus,
+          paymentReference: requestDoc.paymentReference,
+          paymentDueAt: requestDoc.paymentDueAt,
+          paymentRequired: requestDoc.paymentRequired,
+          billingId: requestDoc.billingId,
         },
-        scheduled: { date: form.preferredDate, time: form.preferredTime, slotId: slot.slotId },
+        scheduled: {
+          date: form.preferredDate,
+          time: form.preferredTime,
+          slotId: slot.slotId,
+          slotStart: requestDoc.slot?.start || slot.start,
+          slotEnd: requestDoc.slot?.end || slot.end,
+        },
         payment: availability?.payment || null,
       })
       setFeedback({ type: 'success', message: result.message })
@@ -1172,7 +1232,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     } finally {
       setBookingInFlight(false)
     }
-  }, [form, refreshRequests, sessionId])
+  }, [availability, form, refreshRequests, sessionId])
 
   const startCheckout = useCallback(async slot => {
     try {
@@ -1219,14 +1279,35 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     }
   }, [form, sessionId])
 
+  const closePaymentChoice = useCallback(() => {
+    setPaymentChoiceOpen(false)
+    setSelectedSlot(null)
+  }, [])
+
+  const handleProceedWithPayment = useCallback(() => {
+    if (!selectedSlot) return
+    const slot = selectedSlot
+    closePaymentChoice()
+    startCheckout(slot)
+  }, [selectedSlot, closePaymentChoice, startCheckout])
+
+  const handleDeferPayment = useCallback(() => {
+    if (!selectedSlot) return
+    const slot = selectedSlot
+    closePaymentChoice()
+    submitBooking(slot, { deferPayment: true })
+  }, [selectedSlot, closePaymentChoice, submitBooking])
+
   const handleConfirmSlot = useCallback(slot => {
-    if (!availability) return
+    if (!availability || bookingInFlight) return
     if (availability.payment?.required) {
-      startCheckout(slot)
+      setSelectedSlot(slot)
+      setPaymentChoiceOpen(true)
     } else {
+      setSelectedSlot(null)
       submitBooking(slot)
     }
-  }, [availability, startCheckout, submitBooking])
+  }, [availability, bookingInFlight, submitBooking])
 
   const handleFormSubmit = useCallback(event => {
     event.preventDefault()
@@ -1234,6 +1315,22 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   }, [checkAvailability])
 
   const activeStep = feedback?.type === 'success' ? 2 : availability ? 1 : 0
+  const slotWindowLabel = selectedSlot ? formatSlotRange(selectedSlot) : null
+  const slotDueLabel = useMemo(() => {
+    if (!selectedSlot?.start) return null
+    try {
+      return new Intl.DateTimeFormat('en-GB', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(new Date(selectedSlot.start))
+    } catch (error) {
+      console.warn('Failed to format slot due date', error)
+      return null
+    }
+  }, [selectedSlot])
+  const paymentAmountLabel = availability?.payment?.amount != null
+    ? formatCurrency(availability.payment.amount)
+    : null
 
   return (
     <div className="glass-panel mx-auto max-w-6xl rounded-4xl border border-slate-200/60 bg-white/90 p-8 shadow-md">
@@ -1342,6 +1439,51 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
       allowedItems={allowedItems}
       onRefresh={refreshRequests}
     />
+
+        <Dialog
+          open={paymentChoiceOpen}
+          onClose={bookingInFlight ? undefined : closePaymentChoice}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Select how you would like to pay</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ mb: 2 }}>
+              Paying now will confirm this pickup immediately.
+              {paymentAmountLabel ? ` The total payable amount is ${paymentAmountLabel}.` : ''}
+            </DialogContentText>
+            <Stack spacing={1.5}>
+              {slotWindowLabel ? (
+                <Typography variant="body2" color="text.secondary">
+                  Slot reserved: {slotWindowLabel}
+                </Typography>
+              ) : null}
+              {slotDueLabel ? (
+                <Alert severity="warning" icon={<Clock3 size={18} />}>
+                  If payment is not completed before {slotDueLabel}, this reservation will be cancelled automatically.
+                </Alert>
+              ) : (
+                <Alert severity="warning" icon={<Clock3 size={18} />}>
+                  This reservation will be cancelled automatically if payment is not completed before the scheduled slot.
+                </Alert>
+              )}
+              <Alert severity="info" icon={<Info size={18} />}>
+                Choosing “Pay later” will generate an outstanding bill that you can settle from the My Bills section.
+              </Alert>
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={closePaymentChoice} disabled={bookingInFlight}>
+              Back
+            </Button>
+            <Button onClick={handleDeferPayment} disabled={bookingInFlight} variant="outlined">
+              Pay later
+            </Button>
+            <Button onClick={handleProceedWithPayment} disabled={bookingInFlight} variant="contained">
+              Pay now
+            </Button>
+          </DialogActions>
+        </Dialog>
     </Stack>
   </div>
   )
