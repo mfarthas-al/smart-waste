@@ -12,6 +12,7 @@ function ZoneSelector({
   loading,
   actionLabel,
 }) {
+  // Present the municipal context details alongside the trigger for optimization runs.
   return (
     <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
       <div className="flex flex-col gap-4">

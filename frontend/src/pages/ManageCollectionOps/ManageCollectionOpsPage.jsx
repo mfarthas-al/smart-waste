@@ -176,6 +176,7 @@ export default function ManageCollectionOpsPage() {
       setZoneDetails({ totalBins: bins.length || '—', areaSize: '—', population: '—', lastCollection: '—' })
       return
     }
+    // Derive lightweight descriptors for the summary card so the UI renders instantly after selection changes.
     const totalBins = bins.length > 0 ? bins.length : '—'
     const area = typeof selectedCity.areaSqKm === 'number'
       ? selectedCity.areaSqKm.toLocaleString(undefined, { maximumFractionDigits: 1 })
@@ -198,6 +199,7 @@ export default function ManageCollectionOpsPage() {
     if (!city) return
     setLoading(true)
     setError('')
+    // Immediately transition the progress timeline so operators see feedback before the request resolves.
     setProgressSteps(createProgressState(0))
     try {
       const res = await fetch(OPTIMIZE_ENDPOINT, {
@@ -264,6 +266,7 @@ export default function ManageCollectionOpsPage() {
       ? `Threshold ≥ ${Math.round(plan.summary.threshold * 100)}%`
       : 'Current settings'
 
+    // Memoise derived KPI descriptions because the cards re-render frequently during loading states.
     return [
       {
         label: 'Stops scheduled',

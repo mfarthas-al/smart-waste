@@ -63,6 +63,7 @@ export default function CollectorView() {
 
   const completed = useMemo(() => stops.filter(stop => stop.visited).length, [stops])
   const totalStops = stops.length
+  // Summaries keep the header progress indicator and remaining count in sync with the checklist.
   const progress = totalStops === 0 ? 0 : Math.round((completed / totalStops) * 100)
 
   return (
@@ -151,6 +152,7 @@ export default function CollectorView() {
             {stops.map(stop => {
               const isVisited = Boolean(stop.visited)
               const isPendingAction = pendingBin === stop.binId
+              // Disable the action while we persist the update to avoid double submissions.
               return (
                 <li key={stop.binId} className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                   <div className="flex min-w-[12rem] flex-col">

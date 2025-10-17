@@ -65,6 +65,7 @@ export default function RouteMap({ plan, depot }) {
     if (!stops.length) {
       return [[baseDepot.lat, baseDepot.lon]]
     }
+    // Close the polyline by mirroring the depot at the start and end of the route.
     const pts = [[baseDepot.lat, baseDepot.lon], ...stops.map(s => [s.lat, s.lon]), [baseDepot.lat, baseDepot.lon]]
     return pts
   }, [stops, baseDepot])
