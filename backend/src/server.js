@@ -1,8 +1,10 @@
 require('dotenv').config();
 const { connectDB } = require('./db/mongoose');
 const app = require('./app');
+const { loadEnv } = require('./config/env');
 
-const PORT = process.env.PORT || 4000;
+const env = loadEnv();
+const PORT = env.PORT || 4000;
 
 connectDB()
   .then(() => {
@@ -13,3 +15,10 @@ connectDB()
     console.error('DB connection failed:', err);
     process.exit(1);
   });
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
