@@ -99,7 +99,15 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
     requestId: request._id?.toString() || request.id,
   });
 
-  const subject = `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
+  const isPaymentPending = request.paymentStatus === 'pending' && request.paymentRequired !== false;
+  const paymentDueAt = request.paymentDueAt || slot.start;
+  const formattedDueAt = paymentDueAt
+    ? new Date(paymentDueAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })
+    : null;
+
+  const subject = isPaymentPending
+    ? `Special collection pending payment: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+    : `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
   const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
   const scheduledDate = new Date(slot.start).toLocaleDateString('en-GB', { timeZone: 'Asia/Colombo', day: 'numeric', month: 'short', year: 'numeric' });
   const scheduledTime = new Date(slot.start).toLocaleTimeString('en-GB', { timeZone: 'Asia/Colombo', hour: '2-digit', minute: '2-digit' });
@@ -112,9 +120,14 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
   const text = [
     `Hello ${resident.name},`,
     '',
-    'Your special waste collection has been scheduled successfully.',
+    isPaymentPending
+      ? 'Your special waste collection booking is reserved and awaiting payment.'
+      : 'Your special waste collection has been scheduled successfully.',
     receipt?.issuedAt
       ? `Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+      : null,
+    isPaymentPending && formattedDueAt
+      ? `Payment due by: ${formattedDueAt}`
       : null,
     '',
     'Pickup details:',
@@ -129,13 +142,16 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
     `  Scheduled date: ${scheduledDate}`,
     `  Scheduled time: ${scheduledTime}`,
     '',
-    'Payment receipt:',
+    isPaymentPending ? 'Payment due:' : 'Payment receipt:',
     `  Subtotal: ${subtotal}`,
     `  Extra charges: ${extraCharge}`,
     `  Tax: ${taxCharge}`,
-    `  Total paid: ${totalCharge}`,
+    `${isPaymentPending ? '  Total due' : '  Total paid'}: ${totalCharge}`,
+    isPaymentPending ? '  Status: awaiting payment' : null,
     '',
-    'If you need to make changes, contact the municipal hotline at 1919.',
+    isPaymentPending
+      ? 'Please complete the payment before the scheduled slot. Bookings without payment will be cancelled automatically.'
+      : 'If you need to make changes, contact the municipal hotline at 1919.',
     '',
     'Smart Waste LK operations team',
   ].filter(line => line !== null && line !== undefined).join('\n');
@@ -143,10 +159,16 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
   const receiptIssuedHtml = receipt?.issuedAt
     ? `<p style="color:#475569;font-size:12px;">Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}</p>`
     : '';
+  const paymentDueHtml = isPaymentPending && formattedDueAt
+    ? `<p style="color:#dc2626;font-size:13px;"><strong>Payment due by:</strong> ${formattedDueAt}</p>`
+    : '';
 
   const html = `<p>Hello ${resident.name},</p>
-  <p>Your special waste collection has been scheduled successfully.</p>
+  <p>${isPaymentPending
+    ? 'Your special waste collection booking is reserved and awaiting payment.'
+    : 'Your special waste collection has been scheduled successfully.'}</p>
   ${receiptIssuedHtml}
+  ${paymentDueHtml}
   <h3>Pickup details</h3>
   <ul>
     <li><strong>Address:</strong> ${request.address}</li>
@@ -159,7 +181,7 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
     ${request.totalWeightKg ? `<li><strong>Estimated total weight:</strong> ${request.totalWeightKg} kg</li>` : ''}
     <li><strong>Scheduled date:</strong> ${scheduledDate} (${slotWindow})</li>
   </ul>
-  <h3>Payment receipt</h3>
+  <h3>${isPaymentPending ? 'Payment due' : 'Payment receipt'}</h3>
   <table style="border-collapse: collapse;">
     <tbody>
       <tr>
@@ -175,12 +197,15 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
         <td style="padding: 4px 0; font-weight: 600;">${taxCharge}</td>
       </tr>
       <tr>
-        <td style="padding: 8px 12px 4px 0; font-weight: 700;">Total paid</td>
+        <td style="padding: 8px 12px 4px 0; font-weight: 700;">${isPaymentPending ? 'Total due' : 'Total paid'}</td>
         <td style="padding: 8px 0; font-weight: 700;">${totalCharge}</td>
       </tr>
+      ${isPaymentPending ? '<tr><td style="padding:4px 12px 4px 0;">Status</td><td style="padding:4px 0; font-weight:600; color:#dc2626;">Awaiting payment</td></tr>' : ''}
     </tbody>
   </table>
-  <p>If you need to make changes, contact the municipal hotline at 1919.</p>
+  <p>${isPaymentPending
+    ? 'Please complete the payment before the scheduled slot. Bookings without payment will be cancelled automatically.'
+    : 'If you need to make changes, contact the municipal hotline at 1919.'}</p>
   <p>Smart Waste LK operations team</p>`;
 
   const attachments = receipt?.buffer

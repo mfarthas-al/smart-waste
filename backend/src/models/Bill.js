@@ -10,6 +10,12 @@ const billSchema = new Schema({
   billingPeriodEnd: { type: Date },
   generatedAt: { type: Date, default: Date.now },
   dueDate: { type: Date, required: true },
+  category: {
+    type: String,
+    enum: ['residential', 'special-collection'],
+    default: 'residential',
+  },
+  specialCollectionRequestId: { type: Types.ObjectId, ref: 'SpecialCollectionRequest', index: true },
   status: {
     type: String,
     enum: ['unpaid', 'paid', 'cancelled'],

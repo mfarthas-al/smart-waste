@@ -40,10 +40,13 @@ const requestSchema = new Schema({
   paymentWeightCharge: { type: Number, default: 0 },
   paymentTaxCharge: { type: Number, default: 0 },
   paymentReference: { type: String },
+  paymentDueAt: { type: Date },
+  billingId: { type: Types.ObjectId, ref: 'Bill' },
   notifications: {
     residentSentAt: { type: Date },
     authoritySentAt: { type: Date },
   },
+  cancellationReason: { type: String },
 }, { timestamps: true });
 
 requestSchema.index({ 'slot.slotId': 1 });
