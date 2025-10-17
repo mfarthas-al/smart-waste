@@ -10,6 +10,7 @@
       "Borella": { "lat": 6.9147, "lon": 79.8733 }
     },
     "route_threshold": 0.1,
-    "truck_capacity_kg": 3000
+    "truck_capacity_kg": 3000,
+    "fleet_trucks": ["TRUCK-01", "TRUCK-02", "TRUCK-03", "TRUCK-04", "TRUCK-05"]
   }
 }

@@ -36,6 +36,11 @@ const endOfDay = date => {
   return d;
 };
 
+/**
+ * Derive the bin fill threshold used for route optimisation, applying operator adjustments.
+ * @param {{ skipBelow30?: boolean, emergencyOnly?: boolean, prioritizeCommercial?: boolean }} [adjustments]
+ * @returns {number} A ratio between 0 and 0.9 representing the minimum fill level.
+ */
 const computeThreshold = adjustments => {
   // Applies configuration-aware adjustments without exceeding operational guardrails.
   const base = Number(lk.operations.route_threshold ?? 0.2);

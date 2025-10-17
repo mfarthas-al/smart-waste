@@ -69,19 +69,11 @@ const formatDateLabel = value => {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-const formatDuration = minutes => {
-  if (typeof minutes !== 'number' || Number.isNaN(minutes) || minutes <= 0) {
-    return '—'
+const formatMetric = value => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value.toLocaleString()
   }
-  const hrs = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  if (hrs === 0) {
-    return `${mins} min`
-  }
-  if (mins === 0) {
-    return `${hrs} hr`
-  }
-  return `${hrs} hr ${mins} min`
+  return '—'
 }
 
 // Coordinates the end-to-end optimization workflow for operations managers.
@@ -96,6 +88,133 @@ export default function ManageCollectionOpsPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastOptimizedAt, setLastOptimizedAt] = useState(null)
+  const [liveSync, setLiveSync] = useState(false)
+  const [pendingBin, setPendingBin] = useState('')
+  const [collectorBanner, setCollectorBanner] = useState(null)
+
+  const selectedCity = useMemo(() => cities.find(entry => entry.name === city), [cities, city])
+
+  const loadSummary = useCallback(async ({ signal } = {}) => {
+    try {
+      const res = await fetch('/api/ops/summary', { signal })
+      if (!res.ok) {
+        throw new Error(`Failed to load summary (${res.status})`)
+      }
+      const data = await res.json()
+      if (signal?.aborted) {
+        return
+      }
+      setSummaryMetrics({
+        activeZones: typeof data.activeZones === 'number' ? data.activeZones : null,
+        totalZones: typeof data.totalZones === 'number' ? data.totalZones : null,
+        availableTrucks: typeof data.availableTrucks === 'number' ? data.availableTrucks : null,
+        fleetSize: typeof data.fleetSize === 'number' ? data.fleetSize : null,
+        engagedTrucks: typeof data.engagedTrucks === 'number' ? data.engagedTrucks : null,
+        totalBins: typeof data.totalBins === 'number' ? data.totalBins : null,
+      })
+    } catch (err) {
+      if (signal?.aborted) {
+        return
+      }
+      console.error('loadSummary error', err)
+      setSummaryMetrics(metrics => ({ ...metrics }))
+    }
+  }, [])
+
+  const fetchDirections = useCallback(async (truckId, { signal } = {}) => {
+    if (!truckId) return null
+    try {
+      const dirRes = await fetch(`/api/ops/routes/${encodeURIComponent(truckId)}/directions`, { signal })
+      if (!dirRes.ok) {
+        throw new Error(`Directions failed (${dirRes.status})`)
+      }
+      const data = await dirRes.json()
+      if (signal?.aborted) {
+        return null
+      }
+      return data
+    } catch (err) {
+      if (signal?.aborted) {
+        return null
+      }
+      console.error('directions error', err)
+      return null
+    }
+  }, [])
+
+  const loadPlan = useCallback(async ({ city: cityOverride, signal } = {}) => {
+    const targetCity = cityOverride ?? city
+    if (!targetCity) return
+
+    setPlanFetching(true)
+
+    try {
+      const res = await fetch(`/api/ops/routes/by-city?city=${encodeURIComponent(targetCity)}`, { signal })
+      if (signal?.aborted) {
+        return
+      }
+
+      if (res.status === 404) {
+        setPlan(null)
+        setDirections(null)
+        setLastOptimizedAt(null)
+        return
+      }
+
+      if (!res.ok) {
+        throw new Error(`Failed to load plan (${res.status})`)
+      }
+
+      const data = await res.json()
+      if (signal?.aborted) {
+        return
+      }
+
+      const normalized = {
+        ...data,
+        depot: data.depot || selectedCity?.depot || null,
+        summary: data.summary || {},
+      }
+
+      const totalStops = Array.isArray(normalized.stops) ? normalized.stops.length : 0
+      const completedCount = Array.isArray(normalized.stops) ? normalized.stops.filter(stop => stop.visited).length : 0
+      normalized.summary = {
+        ...normalized.summary,
+        completedStops: completedCount,
+        pendingStops: Math.max(totalStops - completedCount, 0),
+      }
+
+      setPlan(normalized)
+
+      if (data.updatedAt) {
+        const updated = new Date(data.updatedAt)
+        if (!Number.isNaN(updated.getTime())) {
+          setLastOptimizedAt(updated)
+        }
+      }
+
+      if (data.truckId) {
+        const directionData = await fetchDirections(data.truckId, { signal })
+        if (signal?.aborted) {
+          return
+        }
+        if (directionData) {
+          setDirections({ ...directionData, truckId: data.truckId })
+        } else {
+          setDirections(null)
+        }
+      } else {
+        setDirections(null)
+      }
+    } catch (err) {
+      if (signal?.aborted) {
+        return
+      }
+      console.error('loadPlan error', err)
+    } finally {
+      setPlanFetching(false)
+    }
+  }, [city, selectedCity, fetchDirections])
 
   // Load the managed city catalogue, falling back to static data when the API fails.
   useEffect(() => {
@@ -121,11 +240,14 @@ export default function ManageCollectionOpsPage() {
       }
     }
 
+    const summaryController = new AbortController()
     loadCities()
+    loadSummary({ signal: summaryController.signal })
     return () => {
       ignore = true
+      summaryController.abort()
     }
-  }, [])
+  }, [loadSummary])
 
   // Whenever the selected city changes, fetch bins scoped to that municipality.
   useEffect(() => {
@@ -165,7 +287,29 @@ export default function ManageCollectionOpsPage() {
   setProgressSteps(createProgressState())
   }, [city])
 
-  const selectedCity = useMemo(() => cities.find(entry => entry.name === city), [cities, city])
+  useEffect(() => {
+    if (!city || !liveSync) return undefined
+
+    const controller = new AbortController()
+    loadPlan({ city, signal: controller.signal })
+
+    const handleFocus = () => {
+      loadPlan({ city })
+    }
+
+    const interval = setInterval(() => {
+      loadPlan({ city })
+    }, 10000)
+
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      controller.abort()
+      window.removeEventListener('focus', handleFocus)
+      clearInterval(interval)
+    }
+  }, [city, liveSync, loadPlan])
+
   const currentDepot = plan?.depot ?? selectedCity?.depot
   const depotLat = currentDepot?.lat ? currentDepot.lat.toFixed(3) : '—'
   const depotLon = currentDepot?.lon ? currentDepot.lon.toFixed(3) : '—'
@@ -218,6 +362,13 @@ export default function ManageCollectionOpsPage() {
         depot: data.depot || selectedCity?.depot || null,
         summary: data.summary || {},
       }
+      const totalStops = Array.isArray(normalized.stops) ? normalized.stops.length : 0
+      const completedCount = Array.isArray(normalized.stops) ? normalized.stops.filter(stop => stop.visited).length : 0
+      normalized.summary = {
+        ...normalized.summary,
+        completedStops: completedCount,
+        pendingStops: Math.max(totalStops - completedCount, 0),
+      }
       setPlan(normalized)
       setLastOptimizedAt(new Date())
       setProgressSteps(createProgressState(-1, 'done'))
@@ -237,6 +388,9 @@ export default function ManageCollectionOpsPage() {
       } else {
         setDirections(null)
       }
+
+      await loadSummary()
+      setLiveSync(true)
     } catch (err) {
       console.error('optimize error', err)
       setError('Could not optimize right now. Please try again in a moment.')
@@ -246,16 +400,179 @@ export default function ManageCollectionOpsPage() {
     }
   }, [city, selectedCity])
 
+  const markCollected = useCallback(async binId => {
+    if (!binId) return
+    if (!plan?.truckId) {
+      setCollectorBanner({ tone: 'error', message: 'No truck assignment found. Generate a plan before recording collections.' })
+      return
+    }
+
+    try {
+      setPendingBin(binId)
+      setCollectorBanner(null)
+      const res = await fetch('/api/ops/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binId, truckId: plan.truckId }),
+      })
+      if (!res.ok) {
+        throw new Error(`collection failed ${res.status}`)
+      }
+
+      setCollectorBanner({ tone: 'success', message: `${binId} recorded as collected.` })
+      setPlan(prev => {
+        if (!prev) return prev
+        const updatedStops = (prev.stops || []).map(stop => (stop.binId === binId ? { ...stop, visited: true } : stop))
+        const completedCount = updatedStops.filter(stop => stop.visited).length
+        return {
+          ...prev,
+          stops: updatedStops,
+          summary: {
+            ...prev.summary,
+            completedStops: completedCount,
+            pendingStops: Math.max(updatedStops.length - completedCount, 0),
+          },
+        }
+      })
+
+      await loadPlan({ city })
+      await loadSummary()
+    } catch (err) {
+      console.error('markCollected error', err)
+      setCollectorBanner({ tone: 'error', message: 'Could not mark as collected. Please try again.' })
+    } finally {
+      setPendingBin('')
+    }
+  }, [plan?.truckId, loadPlan, city, loadSummary])
+
   const loadProgress = plan && capacityLimit > 0
     ? Math.min(100, Math.round(((plan.loadKg ?? 0) / capacityLimit) * 100))
     : null
 
-  const waypoints = plan?.stops ?? []
-  const totalDistanceKm = directions?.distanceKm ?? plan?.distanceKm ?? 0
-  const avgLegDistance = plan && plan.stops?.length
-    ? (totalDistanceKm / Math.max(plan.stops.length, 1)).toFixed(2)
-    : '—'
-  const capacityBuffer = plan ? Math.max(0, capacityLimit - (plan.loadKg || 0)) : null
+  const waypoints = useMemo(() => {
+    if (!Array.isArray(plan?.stops)) {
+      return []
+    }
+    return plan.stops
+  }, [plan])
+  const totalDistanceSource = directions?.distanceKm ?? plan?.distanceKm ?? 0
+  const totalDistanceKm = typeof totalDistanceSource === 'number' ? totalDistanceSource : Number(totalDistanceSource) || 0
+  const completedStops = useMemo(() => waypoints.filter(stop => stop.visited).length, [waypoints])
+  const remainingStops = waypoints.length - completedStops
+  const routeProgress = waypoints.length
+    ? Math.round((completedStops / waypoints.length) * 100)
+    : 0
+  const baselineDistanceKm = useMemo(() => {
+    if (!plan) return null
+    const reported = plan.summary?.baselineDistanceKm
+    if (typeof reported === 'number' && reported > 0) {
+      return reported
+    }
+    if (!waypoints.length) return null
+    const assumedLegKm = 2.2
+    return Number((waypoints.length * assumedLegKm).toFixed(1))
+  }, [plan, waypoints.length])
+  const distanceSavedKm = baselineDistanceKm && typeof totalDistanceKm === 'number'
+    ? Math.max(0, Number((baselineDistanceKm - totalDistanceKm).toFixed(1)))
+    : 0
+  const routeEfficiencyGain = baselineDistanceKm && typeof totalDistanceKm === 'number' && baselineDistanceKm > 0
+    ? Math.max(0, Math.min(100, Math.round(((baselineDistanceKm - totalDistanceKm) / baselineDistanceKm) * 100)))
+    : null
+  const fuelSavedLiters = distanceSavedKm > 0
+    ? Number((distanceSavedKm * FUEL_BURN_RATE_L_PER_KM).toFixed(1))
+    : 0
+
+  const areaLookup = useMemo(() => {
+    const mapping = new Map()
+    bins.forEach(bin => {
+      if (!bin?.binId) return
+      const areaLabel = bin.area || (bin.city ? `${bin.city} sector` : 'Unassigned sector')
+      mapping.set(bin.binId, areaLabel)
+    })
+    return mapping
+  }, [bins])
+
+  const topWasteAreas = useMemo(() => {
+    if (!plan?.stops?.length) return []
+    const tallies = new Map()
+    plan.stops.forEach(stop => {
+      const areaName = areaLookup.get(stop.binId) || 'Unassigned sector'
+      const current = tallies.get(areaName) || { area: areaName, totalKg: 0, stops: 0 }
+      current.totalKg += Number(stop.estKg) || 0
+      current.stops += 1
+      tallies.set(areaName, current)
+    })
+    return Array.from(tallies.values())
+      .sort((a, b) => b.totalKg - a.totalKg)
+      .slice(0, 3)
+  }, [plan?.stops, areaLookup])
+
+  const handleExportReport = useCallback(() => {
+    if (!plan) {
+      setError('Generate a route before exporting a report.')
+      return
+    }
+
+    setError('')
+
+    const { filename, content } = buildCollectionOpsReport({
+      city,
+      plan,
+      summaryMetrics,
+      completedStops,
+      remainingStops,
+      totalDistanceKm,
+      durationMinutes: directions?.durationMin,
+      capacityLimit,
+      loadProgress,
+      routeEfficiencyGain,
+      fuelSavedLiters,
+      topWasteAreas,
+      liveSync,
+      highPriorityRatio: HIGH_PRIORITY_RATIO,
+      directionsSource: directions?.line ? 'OSRM road geometry' : 'Fallback heuristic',
+    })
+
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }, [plan, city, summaryMetrics, completedStops, remainingStops, totalDistanceKm, directions, capacityLimit, loadProgress, routeEfficiencyGain, fuelSavedLiters, topWasteAreas, liveSync, setError])
+
+  const summaryHighlights = useMemo(() => {
+    const { activeZones, totalZones, availableTrucks, fleetSize, engagedTrucks, totalBins } = summaryMetrics
+
+    const activeHelper = typeof totalZones === 'number'
+      ? `${typeof activeZones === 'number' ? Math.min(activeZones, totalZones).toLocaleString() : '—'} of ${totalZones.toLocaleString()} zones serviced last 7 days`
+      : 'Based on last 7 days of collections'
+
+    const trucksHelper = typeof fleetSize === 'number'
+      ? `${typeof engagedTrucks === 'number' ? engagedTrucks.toLocaleString() : '—'} deployed / ${fleetSize.toLocaleString()} total`
+      : 'Fleet readiness'
+
+    return [
+      {
+        label: 'Active zones',
+        value: formatMetric(activeZones),
+        helper: activeHelper,
+      },
+      {
+        label: 'Available trucks',
+        value: formatMetric(availableTrucks),
+        helper: trucksHelper,
+      },
+      {
+        label: 'Total bins',
+        value: formatMetric(totalBins),
+        helper: 'Across all active councils',
+      },
+    ]
+  }, [summaryMetrics])
 
   const kpis = useMemo(() => {
     const stops = plan?.stops?.length ?? (loading ? '…' : '—')
@@ -299,17 +616,37 @@ export default function ManageCollectionOpsPage() {
     <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6">
       <section className="glass-panel rounded-4xl p-8 shadow-xl shadow-brand-500/20">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+          <div className="w-full">
             <h2 className="text-3xl font-semibold text-slate-900">Manage Collection Operations</h2>
-            <p className="mt-2 max-w-xl text-sm text-slate-600">Select a city cluster, run the optimizer, and dispatch crews with the latest demand and capacity guidance.</p>
+            <p className="mt-2 max-w-xl text-sm text-slate-600">Generate and manage optimized routes for council zones</p>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {summaryHighlights.map(item => (
+                <div key={item.label} className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{item.label}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
+                  <p className="mt-1 text-xs text-slate-500">{item.helper}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <Chip
-            icon={<ShieldCheck className="h-3.5 w-3.5" />}
-            label="Service level normal"
-            color="success"
-            variant="outlined"
-            sx={{ borderRadius: '999px', fontWeight: 600, textTransform: 'none' }}
-          />
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <Button
+              onClick={handleExportReport}
+              variant="contained"
+              startIcon={<FileDown className="h-4 w-4" />}
+              disabled={!plan}
+              sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600, paddingInline: '1.35rem' }}
+            >
+              Export report
+            </Button>
+            <Chip
+              icon={<ShieldCheck className="h-3.5 w-3.5" />}
+              label="Service level normal"
+              color="success"
+              variant="outlined"
+              sx={{ borderRadius: '999px', fontWeight: 600, textTransform: 'none' }}
+            />
+          </div>
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
@@ -366,19 +703,38 @@ export default function ManageCollectionOpsPage() {
 
             <Card className="glass-panel rounded-3xl border border-slate-200/70 bg-slate-950/95 text-slate-100 shadow-lg shadow-slate-900/40">
               <CardContent className="space-y-5 p-6">
-                <h3 className="text-sm uppercase tracking-wide text-slate-400">Crew briefing</h3>
-                <p className="text-sm text-slate-300">Provide this summary to the {plan?.truckId || 'TRUCK-01'} crew before dispatch. Ensure fuel levels support a {totalDistanceKm ? `${totalDistanceKm.toFixed(1)} km` : '—'} circuit.</p>
-                <Divider light sx={{ borderColor: 'rgba(148, 163, 184, 0.18)' }} />
-                <div className="space-y-4 text-sm">
-                  <div className="rounded-2xl bg-slate-900/70 px-4 py-3">
-                    <p className="font-semibold text-white">Priority guidance</p>
-                    <p className="mt-1 text-slate-400">Visit bins in listed order; overflow risk is highest for the first three stops.</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm uppercase tracking-wide text-slate-400">High waste areas</h3>
+                    <p className="mt-1 text-sm text-slate-300">Focus crews on sectors generating the heaviest loads from today&apos;s plan.</p>
                   </div>
-                  <div className="rounded-2xl bg-slate-900/70 px-4 py-3">
-                    <p className="font-semibold text-white">Contingency</p>
-                    <p className="mt-1 text-slate-400">If load exceeds capacity, divert to secondary truck TRUCK-02 after stop #5.</p>
-                  </div>
+                  <Chip
+                    icon={<Flame className="h-3.5 w-3.5" />}
+                    label={routeEfficiencyGain !== null ? `${routeEfficiencyGain}% gain` : 'Route active'}
+                    color="warning"
+                    size="small"
+                    variant="outlined"
+                    sx={{ borderRadius: '999px', fontWeight: 600, textTransform: 'none' }}
+                  />
                 </div>
+
+                {topWasteAreas.length > 0 ? (
+                  <ul className="space-y-3">
+                    {topWasteAreas.map((entry, index) => (
+                      <li key={entry.area} className="flex items-center gap-3 rounded-2xl bg-slate-900/70 px-4 py-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-500/20 text-sm font-semibold text-amber-300">#{index + 1}</span>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-white">{entry.area}</span>
+                          <span className="text-xs text-slate-400">Approx. {Math.round(entry.totalKg)} kg • {entry.stops} stops</span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="rounded-2xl bg-slate-900/70 px-4 py-3 text-xs text-slate-400">
+                    Optimize a route to surface the most critical areas for today&apos;s shift.
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -393,94 +749,177 @@ export default function ManageCollectionOpsPage() {
               <span className="text-xs uppercase tracking-wide text-slate-500">{waypoints.length} stops</span>
             </div>
 
-            {plan && (
-              <div className="mt-6">
-                <RouteMap plan={plan} depot={currentDepot} />
+            <div className="mt-6 space-y-6">
+              <div className="rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-inner">
+                {plan ? (
+                  <RouteMap plan={plan} depot={currentDepot} />
+                ) : (
+                  <div className="flex h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center text-sm text-slate-500">
+                    Generate a route to preview today&apos;s timeline.
+                  </div>
+                )}
               </div>
-            )}
 
-            <ol className="mt-6 space-y-3">
-              {loading && (
-                <li className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-100/80 px-4 py-4 text-sm text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                  Calculating best route…
-                </li>
+              <div className="space-y-3 text-sm text-slate-500">
+                {loading && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-100/80 px-4 py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                    Calculating best route…
+                  </div>
+                )}
+                {!loading && planFetching && liveSync && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                    Syncing live updates from Collector crews…
+                  </div>
+                )}
+                {!loading && !plan && !planFetching && (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-center">
+                    Run an optimization to generate a stop list for today&apos;s shift.
+                  </div>
+                )}
+                {plan && !loading && !planFetching && (
+                  <p className="text-xs text-slate-500">Crew updates sync automatically once collector progress is recorded.</p>
+                )}
+              </div>
+
+              {plan && waypoints.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Route efficiency</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-900">{routeEfficiencyGain !== null ? `${routeEfficiencyGain}%` : '—'}</p>
+                    <p className="text-xs text-slate-500">Versus baseline distance of {baselineDistanceKm ? `${baselineDistanceKm.toFixed?.(1) ?? baselineDistanceKm} km` : '—'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Fuel saved</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-900">{fuelSavedLiters.toFixed(1)} L</p>
+                    <p className="text-xs text-slate-500">About {distanceSavedKm.toFixed(1)} km less driving today</p>
+                  </div>
+                </div>
               )}
-              {!loading && waypoints.length === 0 && (
-                <li className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-6 text-sm text-slate-500">
-                  Run an optimization to generate a stop list for today&apos;s shift.
-                </li>
-              )}
-              {waypoints.map((stop, index) => {
-                const lat = typeof stop.lat === 'number' ? stop.lat.toFixed(4) : '—'
-                const lon = typeof stop.lon === 'number' ? stop.lon.toFixed(4) : '—'
-                const estKg = typeof stop.estKg === 'number' ? stop.estKg : '—'
-                return (
-                  <li key={stop.binId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-semibold text-emerald-700">{index + 1}</span>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{stop.binId}</p>
-                        <p className="text-xs text-slate-500">Lat {lat} · Lon {lon}</p>
-                      </div>
-                      <span className="ml-auto inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                        {estKg} kg
-                      </span>
-                    </div>
-                  </li>
-                )
-              })}
-            </ol>
+            </div>
           </CardContent>
         </Card>
 
-        <div className="flex flex-col gap-6">
-          <Card className="rounded-3xl border border-slate-200 bg-slate-50/80 shadow-inner">
-            <CardContent className="space-y-4 p-6 text-sm text-slate-600">
-              <h3 className="text-lg font-semibold text-slate-900">Operational insights</h3>
-              <ul className="space-y-3">
-                <li>• Average leg distance: {avgLegDistance} km</li>
-                <li>• Capacity buffer: {capacityBuffer !== null ? `${capacityBuffer} kg remaining` : 'Awaiting plan'}</li>
-                <li>• Suggested dispatch: {plan ? '05:30 local time' : 'Schedule after plan is ready'}</li>
-              </ul>
-              {plan && (
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wide text-slate-400">Capacity utilization</p>
-                  <LinearProgress
-                    variant="determinate"
-                    value={loadProgress ?? 0}
-                    sx={{ borderRadius: 999, height: 6, backgroundColor: 'rgba(148, 163, 184, 0.25)', '& .MuiLinearProgress-bar': { backgroundColor: '#0ea5e9' } }}
-                  />
+        <Card id="collector-checklist" className="glass-panel rounded-3xl border border-slate-200/70 bg-white/95">
+          <CardContent className="flex h-full flex-col gap-5 p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Field collector</p>
+                <h4 className="text-lg font-semibold text-slate-900">Stop checklist</h4>
+                <p className="text-xs text-slate-500">{plan ? 'Record collections without leaving the control centre.' : 'Generate a plan to unlock the digital checklist.'}</p>
+              </div>
+              <div className="flex flex-col items-end gap-2 text-xs text-slate-500">
+                <Chip
+                  icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                  label={`${completedStops} collected`}
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                  sx={{ borderRadius: '999px', fontWeight: 600, textTransform: 'none' }}
+                />
+                <span>{plan ? `${remainingStops} remaining • ${routeProgress}% complete` : 'No route active'}</span>
+              </div>
+            </div>
+
+            <LinearProgress
+              variant="determinate"
+              value={plan ? routeProgress : 0}
+              sx={{
+                borderRadius: 999,
+                height: 8,
+                backgroundColor: 'rgba(148, 163, 184, 0.25)',
+                '& .MuiLinearProgress-bar': { backgroundColor: '#10b981' },
+              }}
+            />
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Capacity utilization</p>
+                <LinearProgress
+                  variant="determinate"
+                  value={plan ? loadProgress ?? 0 : 0}
+                  sx={{ borderRadius: 999, height: 6, backgroundColor: 'rgba(148, 163, 184, 0.25)', '& .MuiLinearProgress-bar': { backgroundColor: '#0ea5e9' } }}
+                />
+                <p className="mt-2 text-xs text-slate-500">{plan ? `${plan.loadKg ?? 0} kg / ${capacityLimit} kg` : 'Awaiting plan data'}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Stops completed</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">{plan ? `${completedStops}/${waypoints.length}` : '—'}</p>
+                <p className="text-xs text-slate-500">Live sync enabled after optimization</p>
+              </div>
+            </div>
+
+            {collectorBanner && (
+              <Alert
+                severity={collectorBanner.tone === 'success' ? 'success' : 'error'}
+                icon={collectorBanner.tone === 'success'
+                  ? <CheckCircle2 className="h-4 w-4" />
+                  : <AlertTriangle className="h-4 w-4" />}
+                variant="outlined"
+                sx={{ borderRadius: '16px' }}
+              >
+                {collectorBanner.message}
+              </Alert>
+            )}
+
+            <div className="flex-1 overflow-hidden">
+              {waypoints.length === 0 ? (
+                <Alert
+                  severity="info"
+                  icon={<MapPin className="h-4 w-4" />}
+                  variant="outlined"
+                  sx={{ borderRadius: '16px' }}
+                >
+                  No stops scheduled yet. Run an optimization to populate today&apos;s checklist.
+                </Alert>
+              ) : (
+                <div className="max-h-[360px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
+                  <ul className="space-y-3 pr-1">
+                    {waypoints.map(stop => {
+                      const visited = Boolean(stop.visited)
+                      const isPending = pendingBin === stop.binId
+                      return (
+                        <li key={stop.binId} className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                          <div className="flex min-w-[12rem] flex-col">
+                            <span className={`text-sm font-semibold ${visited ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{stop.binId}</span>
+                            <span className={`flex items-center gap-1 text-xs ${visited ? 'text-slate-400 line-through' : 'text-slate-500'}`}>
+                              <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                              Lat {stop.lat?.toFixed?.(4)} · Lon {stop.lon?.toFixed?.(4)}
+                            </span>
+                          </div>
+                          <Chip
+                            icon={visited ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                            label={visited ? 'Done' : 'Pending'}
+                            color={visited ? 'success' : 'warning'}
+                            variant={visited ? 'filled' : 'outlined'}
+                            size="small"
+                            sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600 }}
+                          />
+                          <span className="flex items-center gap-1 text-xs text-slate-500">Est. load {stop.estKg} kg</span>
+                          {!visited && (
+                            <Button
+                              onClick={() => markCollected(stop.binId)}
+                              disabled={isPending}
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              startIcon={isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                              sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600, marginLeft: 'auto' }}
+                            >
+                              Mark collected
+                            </Button>
+                          )}
+                          {visited && <span className="ml-auto text-xs font-semibold text-emerald-600">Synced</span>}
+                        </li>
+                      )
+                    })}
+                  </ul>
                 </div>
               )}
-            </CardContent>
-          </Card>
-
-          <Card className="glass-panel rounded-3xl border border-slate-200/70 text-sm text-slate-600">
-            <CardContent className="space-y-4 p-6">
-              <h3 className="text-lg font-semibold text-slate-900">Share with teammates</h3>
-              <p>Export the run sheet to notify supervisors and the {plan?.truckId || 'TRUCK-01'} driver.</p>
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  variant="outlined"
-                  startIcon={<FileDown className="h-4 w-4" />}
-                  sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600 }}
-                >
-                  Download PDF
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<Share2 className="h-4 w-4" />}
-                  sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600 }}
-                >
-                  Notify via SMS
-                </Button>
-              </div>
-              <Divider light />
-              <p className="text-xs text-slate-400">Integrations coming soon for WhatsApp and email digests.</p>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
       </section>
     </div>
   )

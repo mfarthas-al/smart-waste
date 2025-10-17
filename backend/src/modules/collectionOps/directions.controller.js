@@ -33,7 +33,9 @@ exports.getPlanDirections = async (req, res) => {
     const depot = plan.depot || { lat: 6.927, lon: 79.861 };
     const coordinates = [
       [depot.lat, depot.lon],
-      ...plan.stops.map(stop => [stop.lat, stop.lon]),
+      ...plan.stops
+        .map(stop => [stop.lat, stop.lon])
+        .filter(isValidCoord),
       [depot.lat, depot.lon],
     ];
 

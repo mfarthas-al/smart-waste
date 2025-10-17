@@ -12,7 +12,8 @@ function numberIcon(n, color = '#10b981') {
       <div style="
         width:28px;height:28px;border-radius:9999px;
         display:grid;place-items:center;
-        background:${color}1A;border:1px solid ${color}66;color:#0f172a;
+        background:${color};border:1px solid ${color};color:#ffffff;
+        box-shadow:0 6px 12px rgba(15,23,42,0.2);
         font:600 12px/1 Inter,system-ui,sans-serif;">
         ${n}
       </div>`,
@@ -94,11 +95,11 @@ export default function RouteMap({ plan, depot }) {
         </Marker>
 
         {/* Numbered stop markers */}
-        {stops.map((s, i) => (
+              {stops.map((s, i) => (
           <Marker
             key={s.binId}
             position={[s.lat, s.lon]}
-            icon={numberIcon(i + 1, s.visited ? '#16a34a' : '#10b981')}
+                    icon={numberIcon(i + 1, s.visited ? '#22c55e' : '#ef4444')}
           >
             <Popup>
               <div style={{ fontWeight: 600 }}>{s.binId}</div>

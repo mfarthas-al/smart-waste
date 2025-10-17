@@ -90,23 +90,9 @@ export default function ReportsPage({ session }) {
     async function loadConfig() {
       setLoadingConfig(true)
       try {
-        const response = await fetch('/api/analytics/config')
-        const data = await response.json()
-        if (!response.ok) {
-          throw new Error(data.message || 'Unable to load analytics configuration')
-        }
-        setConfig(data.filters)
-        const defaultFrom = data.filters?.defaultDateRange?.from
-        const defaultTo = data.filters?.defaultDateRange?.to
-        setFilters(prev => ({
-          ...prev,
-          from: defaultFrom ? new Date(defaultFrom).toISOString().slice(0, 10) : prev.from,
-          to: defaultTo ? new Date(defaultTo).toISOString().slice(0, 10) : prev.to,
-        }))
+        exportReport(format, report);
       } catch (err) {
-        setError(err.message)
-      } finally {
-        setLoadingConfig(false)
+        setError(err.message);
       }
     }
     loadConfig()
@@ -224,18 +210,23 @@ export default function ReportsPage({ session }) {
 
   // Cache the largest totals so the proportional bars render consistently.
   const maxRegionValue = useMemo(() => {
-    if (!report?.charts?.regionSummary?.length) return 0
-    return Math.max(...report.charts.regionSummary.map(item => item.totalKg))
-  }, [report])
+    if (!report?.charts?.regionSummary?.length) return 0;
+    return Math.max(...report.charts.regionSummary.map((item) => item.totalKg));
+  }, [report]);
 
+  /**
+   * Calculates maximum value for waste type chart
+   * Memoized to avoid recalculation on every render
+   */
   const maxWasteValue = useMemo(() => {
-    if (!report?.charts?.wasteSummary?.length) return 0
-    return Math.max(...report.charts.wasteSummary.map(item => item.totalKg))
-  }, [report])
+    if (!report?.charts?.wasteSummary?.length) return 0;
+    return Math.max(...report.charts.wasteSummary.map((item) => item.totalKg));
+  }, [report]);
 
   return (
     <div className="glass-panel mx-auto mt-4 max-w-6xl rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-xl">
       <Stack spacing={5}>
+        {/* Page header */}
         <Box>
           <Chip
             icon={<BarChart3 size={16} />}
@@ -248,211 +239,44 @@ export default function ReportsPage({ session }) {
             Generate waste insights by region, customer, and billing model
           </Typography>
           <Typography variant="body1" color="text.secondary" mt={1.5}>
-            Choose your filters to uncover how waste generation is trending across the network. Results update with each run and can be exported for sharing.
+            Choose your filters to uncover how waste generation is trending across the network.
+            Results update with each run and can be exported for sharing.
           </Typography>
         </Box>
 
+        {/* Error alert */}
         {error && (
           <Alert severity="error" onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
+        {/* No records alert */}
         {noRecordsMessage && (
           <Alert severity="info" onClose={() => setNoRecordsMessage('')}>
             {noRecordsMessage}
           </Alert>
         )}
 
-        <Card className="rounded-3xl border border-slate-200/80 shadow-sm">
-          <CardHeader
-            title="Report criteria"
-            subheader="Select the dimensions that matter to your analysis."
-            action={
-              <Stack direction="row" spacing={2} alignItems="center">
-                <SlidersHorizontal size={18} className="text-slate-400" />
-              </Stack>
-            }
-            sx={{ pb: 0 }}
-          />
-          <CardContent>
-            {loadingConfig ? (
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CircularProgress size={22} />
-                <Typography variant="body2" color="text.secondary">Loading configuration…</Typography>
-              </Stack>
-            ) : (
-              <Stack component="form" spacing={4} onSubmit={handleSubmit}>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      label="From"
-                      name="from"
-                      type="date"
-                      value={filters.from}
-                      onChange={handleFilterChange}
-                      required
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <TextField
-                      label="To"
-                      name="to"
-                      type="date"
-                      value={filters.to}
-                      onChange={handleFilterChange}
-                      required
-                      fullWidth
-                      InputLabelProps={{ shrink: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                      <InputLabel id="regions-label">Regions</InputLabel>
-                      <Select
-                        labelId="regions-label"
-                        label="Regions"
-                        name="regions"
-                        multiple
-                        value={filters.regions}
-                        onChange={handleFilterChange}
-                        renderValue={selected => selected.length ? selected.join(', ') : 'All regions'}
-                      >
-                        {(config?.regions || []).map(region => (
-                          <MenuItem key={region} value={region}>
-                            {region}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                      <InputLabel id="wasteTypes-label">Waste type</InputLabel>
-                      <Select
-                        labelId="wasteTypes-label"
-                        label="Waste type"
-                        name="wasteTypes"
-                        multiple
-                        value={filters.wasteTypes}
-                        onChange={handleFilterChange}
-                        renderValue={selected => selected.length ? selected.join(', ') : 'All types'}
-                      >
-                        {(config?.wasteTypes || []).map(wasteType => (
-                          <MenuItem key={wasteType} value={wasteType}>
-                            {wasteType}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                      <InputLabel id="billingModels-label">Billing model</InputLabel>
-                      <Select
-                        labelId="billingModels-label"
-                        label="Billing model"
-                        name="billingModels"
-                        multiple
-                        value={filters.billingModels}
-                        onChange={handleFilterChange}
-                        renderValue={selected => selected.length ? selected.join(', ') : 'All models'}
-                      >
-                        {(config?.billingModels || []).map(model => (
-                          <MenuItem key={model} value={model}>
-                            {model}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
+        {/* Filter form */}
+        <ReportFilters
+          config={config}
+          filters={filters}
+          onFilterChange={updateFilter}
+          visibility={visibility}
+          onVisibilityToggle={toggleVisibility}
+          onSubmit={generateReport}
+          loading={loadingReport}
+          loadingConfig={loadingConfig}
+        />
 
-                <Stack direction="row" flexWrap="wrap" spacing={3} alignItems="center">
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={loadingReport}
-                    startIcon={loadingReport ? <CircularProgress size={18} /> : <BarChart3 size={18} />}
-                  >
-                    {loadingReport ? 'Crunching numbers…' : 'Generate report'}
-                  </Button>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Typography variant="body2" color="text.secondary" fontWeight={600}>Show sections:</Typography>
-                    {sectionSwitches.map(item => (
-                      <FormControlLabel
-                        key={item.key}
-                        control={<Switch checked={visibility[item.key]} onChange={() => toggleVisibility(item.key)} size="small" />}
-                        label={<Typography variant="body2" color="text.secondary">{item.label}</Typography>}
-                      />
-                    ))}
-                  </Stack>
-                </Stack>
-              </Stack>
-            )}
-          </CardContent>
-        </Card>
+        {/* Report summary */}
+        {report && <ReportSummary report={report} onExport={handleExport} />}
 
+        {/* Report sections */}
         {report && (
           <Stack spacing={4}>
-            <Card className="rounded-3xl border border-slate-200/80 shadow-sm">
-              <CardContent>
-                <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
-                  <Stack spacing={0.5}>
-                    <Typography variant="h6" fontWeight={600}>Report summary</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {new Date(report.criteria.dateRange.from).toLocaleDateString()} → {new Date(report.criteria.dateRange.to).toLocaleDateString()} | {report.criteria.regions?.length ? report.criteria.regions.join(', ') : 'All regions'}
-                    </Typography>
-                  </Stack>
-                  <Stack direction="row" spacing={2}>
-                    <Button variant="outlined" startIcon={<Download size={16} />} onClick={() => handleExport('pdf')} disabled={!canExport}>
-                      Export PDF
-                    </Button>
-                    <Button variant="contained" startIcon={<Save size={16} />} onClick={() => handleExport('xlsx')} disabled={!canExport}>
-                      Export Excel
-                    </Button>
-                  </Stack>
-                </Stack>
-
-                <Grid container spacing={3} mt={1}>
-                  <Grid item xs={12} md={3}>
-                    <Card className="rounded-2xl border border-slate-100 bg-slate-50/60 shadow-sm">
-                      <CardContent>
-                        <Typography variant="overline" color="text.secondary">Total pickups</Typography>
-                        <Typography variant="h5" fontWeight={600}>{report.totals.records}</Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Card className="rounded-2xl border border-slate-100 bg-slate-50/60 shadow-sm">
-                      <CardContent>
-                        <Typography variant="overline" color="text.secondary">Total weight</Typography>
-                        <Typography variant="h5" fontWeight={600}>{formatKg(report.totals.totalWeightKg)}</Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Card className="rounded-2xl border border-slate-100 bg-slate-50/60 shadow-sm">
-                      <CardContent>
-                        <Typography variant="overline" color="text.secondary">Recyclable</Typography>
-                        <Typography variant="h5" fontWeight={600}>{formatKg(report.totals.recyclableWeightKg)}</Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={3}>
-                    <Card className="rounded-2xl border border-slate-100 bg-slate-50/60 shadow-sm">
-                      <CardContent>
-                        <Typography variant="overline" color="text.secondary">Non-recyclable</Typography>
-                        <Typography variant="h5" fontWeight={600}>{formatKg(report.totals.nonRecyclableWeightKg)}</Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-
+            {/* Region analysis */}
             {visibility.regions && (
               <Card className="rounded-3xl border border-slate-200/80 shadow-sm">
                 <CardHeader
@@ -462,7 +286,7 @@ export default function ReportsPage({ session }) {
                 />
                 <CardContent>
                   <Stack spacing={2}>
-                    {(report.charts.regionSummary || []).map(region => (
+                    {(report.charts.regionSummary || []).map((region) => (
                       <HorizontalMetricBar
                         key={region.region}
                         label={region.region}
@@ -476,6 +300,7 @@ export default function ReportsPage({ session }) {
               </Card>
             )}
 
+            {/* Waste type composition */}
             {visibility.wasteTypes && (
               <Card className="rounded-3xl border border-slate-200/80 shadow-sm">
                 <CardHeader
@@ -487,7 +312,7 @@ export default function ReportsPage({ session }) {
                   <Grid container spacing={3}>
                     <Grid item xs={12} md={6}>
                       <Stack spacing={2}>
-                        {(report.charts.wasteSummary || []).map(item => (
+                        {(report.charts.wasteSummary || []).map((item) => (
                           <HorizontalMetricBar
                             key={item.wasteType}
                             label={item.wasteType}
@@ -500,15 +325,35 @@ export default function ReportsPage({ session }) {
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <Box className="rounded-3xl border border-slate-100 bg-slate-50/60 p-6">
-                        <Typography variant="subtitle1" fontWeight={600} gutterBottom>Split snapshot</Typography>
+                        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                          Split snapshot
+                        </Typography>
                         <Stack spacing={2}>
                           <Stack direction="row" spacing={2} alignItems="center">
-                            <Box sx={{ width: 16, height: 16, borderRadius: '999px', bgcolor: 'rgba(16, 185, 129, 0.7)' }} />
-                            <Typography variant="body2">Recyclable {formatKg(report.totals.recyclableWeightKg)}</Typography>
+                            <Box
+                              sx={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: '999px',
+                                bgcolor: 'rgba(16, 185, 129, 0.7)',
+                              }}
+                            />
+                            <Typography variant="body2">
+                              Recyclable {formatKg(report.totals.recyclableWeightKg)}
+                            </Typography>
                           </Stack>
                           <Stack direction="row" spacing={2} alignItems="center">
-                            <Box sx={{ width: 16, height: 16, borderRadius: '999px', bgcolor: 'rgba(239, 68, 68, 0.7)' }} />
-                            <Typography variant="body2">Non-recyclable {formatKg(report.totals.nonRecyclableWeightKg)}</Typography>
+                            <Box
+                              sx={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: '999px',
+                                bgcolor: 'rgba(239, 68, 68, 0.7)',
+                              }}
+                            />
+                            <Typography variant="body2">
+                              Non-recyclable {formatKg(report.totals.nonRecyclableWeightKg)}
+                            </Typography>
                           </Stack>
                         </Stack>
                       </Box>
@@ -518,6 +363,7 @@ export default function ReportsPage({ session }) {
               </Card>
             )}
 
+            {/* Timeline */}
             {visibility.timeline && (
               <Card className="rounded-3xl border border-slate-200/80 shadow-sm">
                 <CardHeader
@@ -531,6 +377,7 @@ export default function ReportsPage({ session }) {
               </Card>
             )}
 
+            {/* Household table */}
             {visibility.households && (
               <Card className="rounded-3xl border border-slate-200/80 shadow-sm">
                 <CardHeader
@@ -540,18 +387,31 @@ export default function ReportsPage({ session }) {
                 />
                 <CardContent>
                   <Stack spacing={2}>
-                    {(report.tables.households || []).slice(0, 12).map(household => (
+                    {(report.tables.households || []).slice(0, 12).map((household) => (
                       <Box
                         key={household.householdId}
                         className="rounded-2xl border border-slate-100 bg-white/80 px-4 py-3"
                       >
-                        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2}>
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          justifyContent="space-between"
+                          alignItems={{ xs: 'flex-start', md: 'center' }}
+                          spacing={2}
+                        >
                           <Stack spacing={0.25}>
-                            <Typography variant="subtitle1" fontWeight={600}>{household.householdId}</Typography>
-                            <Typography variant="body2" color="text.secondary">{household.region} • {household.billingModel}</Typography>
+                            <Typography variant="subtitle1" fontWeight={600}>
+                              {household.householdId}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {household.region} • {household.billingModel}
+                            </Typography>
                           </Stack>
                           <Stack direction="row" spacing={3}>
-                            <Chip label={`${household.pickups} pickups`} variant="outlined" color="default" />
+                            <Chip
+                              label={`${household.pickups} pickups`}
+                              variant="outlined"
+                              color="default"
+                            />
                             <Chip label={formatKg(household.totalKg)} color="success" />
                           </Stack>
                         </Stack>
@@ -560,7 +420,8 @@ export default function ReportsPage({ session }) {
                   </Stack>
                   <Divider sx={{ my: 3 }} />
                   <Typography variant="caption" color="text.secondary">
-                    Showing top {Math.min((report.tables.households || []).length, 12)} of {(report.tables.households || []).length} households by total collected weight.
+                    Showing top {Math.min((report.tables.households || []).length, 12)} of{' '}
+                    {(report.tables.households || []).length} households by total collected weight.
                   </Typography>
                 </CardContent>
               </Card>
@@ -569,7 +430,7 @@ export default function ReportsPage({ session }) {
         )}
       </Stack>
     </div>
-  )
+  );
 }
 
 HorizontalMetricBar.propTypes = {

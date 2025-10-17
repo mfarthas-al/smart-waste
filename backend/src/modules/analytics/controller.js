@@ -1,21 +1,34 @@
+/**
+ * Analytics Controller
+ * 
+ * Handles HTTP requests for analytics endpoints.
+ * Follows the Controller pattern from MVC architecture.
+ * Delegates business logic to the service layer (Single Responsibility Principle).
+ */
+
 const { z } = require('zod');
-const WasteCollectionRecord = require('../../models/WasteCollectionRecord');
+const { AnalyticsService } = require('./reportService');
 const User = require('../../models/User');
 
 // Validates the dashboard-driven filters before running heavy aggregations.
 const criteriaSchema = z.object({
   userId: z.string({ required_error: 'User id is required' }).min(1, 'User id is required'),
   criteria: z.object({
-    dateRange: z.object({
-      from: z.coerce.date({ required_error: 'Start date is required' }),
-      to: z.coerce.date({ required_error: 'End date is required' }),
-    }).refine(({ from, to }) => from <= to, {
-      message: 'End date must be on or after the start date',
-      path: ['to'],
-    }),
-    regions: z.array(z.string().min(1)).optional(),
-    wasteTypes: z.array(z.string().min(1)).optional(),
-    billingModels: z.array(z.string().min(1)).optional(),
+    dateRange: z
+      .object({
+        from: z.coerce.date({ required_error: 'Start date is required' }),
+        to: z.coerce.date({ required_error: 'End date is required' }),
+      })
+      .refine(
+        ({ from, to }) => from <= to,
+        {
+          message: 'End date must be on or after the start date',
+          path: ['to'],
+        }
+      ),
+    regions: z.array(z.string().min(1)).optional().default([]),
+    wasteTypes: z.array(z.string().min(1)).optional().default([]),
+    billingModels: z.array(z.string().min(1)).optional().default([]),
   }),
 }).strict();
 
@@ -26,10 +39,6 @@ function groupBy(array, keyGetter) {
     if (!acc.has(key)) {
       acc.set(key, []);
     }
-      acc.get(key).push(item);
-      return acc;
-    }, new Map());
-}
 
 // Surfaces filter metadata so the frontend can pre-populate selectors.
 async function getConfig(_req, res, next) {
@@ -74,10 +83,22 @@ function buildMatch({ criteria }) {
   if (wasteTypes.length) {
     match.wasteType = { $in: wasteTypes };
   }
-  if (billingModels.length) {
-    match.billingModel = { $in: billingModels };
+
+  /**
+   * Sends an error response
+   * 
+   * @param {Object} res - Express response object
+   * @param {Number} statusCode - HTTP status code
+   * @param {String} message - Error message
+   * @param {Object} additionalData - Additional error data (e.g., validation issues)
+   */
+  static error(res, statusCode, message, additionalData = null) {
+    const response = { ok: false, message };
+    if (additionalData) {
+      Object.assign(response, additionalData);
+    }
+    return res.status(statusCode).json(response);
   }
-  return match;
 }
 
 // Builds all charts and tables for the analytics view from the raw records.
@@ -175,33 +196,56 @@ function makeReportPayload(records, { criteria }) {
 // Generates the report payload if the caller is an authorised admin.
 async function generateReport(req, res, next) {
   try {
-    const payload = criteriaSchema.parse(req.body);
-    const user = await User.findById(payload.userId).lean();
-    if (!user) {
-      return res.status(401).json({ ok: false, message: 'User is not authenticated' });
-    }
-    if (user.role !== 'admin') {
-      return res.status(403).json({ ok: false, message: 'You are not authorised to access analytics' });
-    }
+    // Step 1: Validate and parse request payload
+    const payload = reportCriteriaSchema.parse(req.body);
 
-    const match = buildMatch(payload);
-    const records = await WasteCollectionRecord.find(match).lean();
-
-    if (!records.length) {
-      return res.json({ ok: true, data: null, message: 'No Records Available' });
+    // Step 2: Verify user authorization
+    const authResult = await AuthorizationService.validateUserAccess(payload.userId);
+    
+    if (!authResult.authorized) {
+      return ResponseHandler.error(
+        res,
+        authResult.statusCode,
+        authResult.message
+      );
     }
 
-    const data = makeReportPayload(records, payload);
-    return res.json({ ok: true, data });
+    // Step 3: Generate report using the service layer
+    const reportData = await AnalyticsService.generateReport(payload.criteria);
+
+    // Step 4: Handle empty result set
+    if (!reportData) {
+      return ResponseHandler.success(res, null, MESSAGES.NO_RECORDS);
+    }
+
+    // Step 5: Return successful report
+    return ResponseHandler.success(res, reportData, MESSAGES.REPORT_GENERATED);
+
   } catch (error) {
+    // Handle validation errors specifically
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.issues?.[0]?.message || 'Invalid criteria', issues: error.issues });
+      const firstIssue = error.issues?.[0];
+      return ResponseHandler.error(
+        res,
+        HTTP_STATUS.BAD_REQUEST,
+        firstIssue?.message || MESSAGES.INVALID_CRITERIA,
+        { issues: error.issues }
+      );
     }
+
+    // Pass other errors to the global error handler
     return next(error);
   }
 }
 
+/**
+ * Export controller functions
+ * These are used in the router to handle specific endpoints
+ */
 module.exports = {
   getConfig,
   generateReport,
+  // Export for testing purposes
+  AuthorizationService,
+  ResponseHandler,
 };
