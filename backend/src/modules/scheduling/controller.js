@@ -13,6 +13,12 @@ const { generateSpecialCollectionReceipt } = require('./receipt');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
+const respondWithError = (res, status, message, extra = {}) => (
+  res.status(status).json({ ok: false, message, ...extra })
+);
+
+const handleZodError = (res, error) => respondWithError(res, 400, error.errors[0].message);
+
 const allowedItems = [
   {
     id: 'furniture',
@@ -68,6 +74,15 @@ const SLOT_CONFIG = {
 };
 
 const TAX_RATE = 0.03; // 3% municipal service levy
+
+allowedItems.forEach(item => {
+  if (item.policy) {
+    Object.freeze(item.policy);
+  }
+  Object.freeze(item);
+});
+Object.freeze(allowedItems);
+Object.freeze(SLOT_CONFIG);
 
 const approxWeightSchema = z.union([
   z.number().positive('Approximate weight must be greater than zero'),
@@ -557,7 +572,7 @@ async function checkAvailability(req, res, next) {
 
     const policy = findItemPolicy(payload.itemType);
     if (!policy) {
-      return res.status(400).json({ ok: false, message: 'Unknown item type requested.' });
+      return respondWithError(res, 400, 'Unknown item type requested.');
     }
     if (!policy.allow) {
       return res.status(400).json(buildDisallowedResponse(policy));
@@ -565,7 +580,7 @@ async function checkAvailability(req, res, next) {
 
     const preferred = toDate(payload.preferredDateTime);
     if (Number.isNaN(preferred.getTime())) {
-      return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
+      return respondWithError(res, 400, 'Preferred date/time is invalid.');
     }
 
     const candidates = generateCandidateSlots(preferred, SLOT_CONFIG);
@@ -583,13 +598,13 @@ async function checkAvailability(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return handleZodError(res, error);
     }
     if (error.code === 'USER_NOT_FOUND') {
-      return res.status(404).json({ ok: false, message: error.message });
+      return respondWithError(res, 404, error.message);
     }
     if (error.code === 'ACCOUNT_INACTIVE') {
-      return res.status(403).json({ ok: false, message: error.message });
+      return respondWithError(res, 403, error.message);
     }
     return next(error);
   }
@@ -602,7 +617,7 @@ async function confirmBooking(req, res, next) {
     const policy = findItemPolicy(payload.itemType);
 
     if (!policy) {
-      return res.status(400).json({ ok: false, message: 'Unknown item type requested.' });
+      return respondWithError(res, 400, 'Unknown item type requested.');
     }
     if (!policy.allow) {
       return res.status(400).json(buildDisallowedResponse(policy));
@@ -610,21 +625,21 @@ async function confirmBooking(req, res, next) {
 
     const preferred = toDate(payload.preferredDateTime);
     if (Number.isNaN(preferred.getTime())) {
-      return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
+      return respondWithError(res, 400, 'Preferred date/time is invalid.');
     }
 
     const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
     const deferPayment = Boolean(payload.deferPayment) && payment.required;
 
     if (payment.required && !deferPayment && payload.paymentStatus !== 'success') {
-      return res.status(402).json({ ok: false, message: 'Payment failed. The pickup was not scheduled.' });
+      return respondWithError(res, 402, 'Payment failed. The pickup was not scheduled.');
     }
 
     const slotCandidates = generateCandidateSlots(preferred, SLOT_CONFIG);
     const sameDayCandidates = filterCandidatesForPreferredDay(slotCandidates, preferred);
     const slot = sameDayCandidates.find(candidate => candidate.slotId === payload.slotId);
     if (!slot) {
-      return res.status(400).json({ ok: false, message: 'Selected slot is no longer available.' });
+      return respondWithError(res, 400, 'Selected slot is no longer available.');
     }
 
     const bookingDetails = {
@@ -664,19 +679,19 @@ async function confirmBooking(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return handleZodError(res, error);
     }
     if (error.code === 'USER_NOT_FOUND') {
-      return res.status(404).json({ ok: false, message: error.message });
+      return respondWithError(res, 404, error.message);
     }
     if (error.code === 'ACCOUNT_INACTIVE') {
-      return res.status(403).json({ ok: false, message: error.message });
+      return respondWithError(res, 403, error.message);
     }
     if (error.code === 'SLOT_FULL') {
       await SpecialCollectionPayment.updateOne({ stripeSessionId: req.params.sessionId }, {
         $set: { status: 'failed', reference: req.params.sessionId },
       });
-      return res.status(409).json({ ok: false, message: error.message });
+      return respondWithError(res, 409, error.message);
     }
     return next(error);
   }
@@ -685,7 +700,7 @@ async function confirmBooking(req, res, next) {
 async function startCheckout(req, res, next) {
   try {
     if (!stripe) {
-      return res.status(503).json({ ok: false, message: 'Online payments are currently unavailable.' });
+      return respondWithError(res, 503, 'Online payments are currently unavailable.');
     }
 
     const payload = checkoutInitSchema.parse(req.body);
@@ -693,7 +708,7 @@ async function startCheckout(req, res, next) {
 
     const policy = findItemPolicy(payload.itemType);
     if (!policy) {
-      return res.status(400).json({ ok: false, message: 'Unknown item type requested.' });
+      return respondWithError(res, 400, 'Unknown item type requested.');
     }
     if (!policy.allow) {
       return res.status(400).json(buildDisallowedResponse(policy));
@@ -701,7 +716,7 @@ async function startCheckout(req, res, next) {
 
     const preferred = toDate(payload.preferredDateTime);
     if (Number.isNaN(preferred.getTime())) {
-      return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
+      return respondWithError(res, 400, 'Preferred date/time is invalid.');
     }
 
     const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
@@ -713,7 +728,7 @@ async function startCheckout(req, res, next) {
     const sameDayCandidates = filterCandidatesForPreferredDay(slotCandidates, preferred);
     const slot = sameDayCandidates.find(candidate => candidate.slotId === payload.slotId);
     if (!slot) {
-      return res.status(400).json({ ok: false, message: 'Selected slot is no longer available.' });
+      return respondWithError(res, 400, 'Selected slot is no longer available.');
     }
 
     const existing = await SpecialCollectionRequest.countDocuments({
@@ -722,7 +737,7 @@ async function startCheckout(req, res, next) {
     });
     const pendingPayments = await SpecialCollectionPayment.countDocuments({ slotId: slot.slotId, status: 'pending' });
     if (existing + pendingPayments >= SLOT_CONFIG.maxRequestsPerSlot) {
-      return res.status(409).json({ ok: false, message: 'This slot has just been booked. Please choose another slot.' });
+      return respondWithError(res, 409, 'This slot has just been booked. Please choose another slot.');
     }
 
     const metadata = {
@@ -946,19 +961,19 @@ async function syncCheckout(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return handleZodError(res, error);
     }
     if (error.code === 'USER_NOT_FOUND') {
-      return res.status(404).json({ ok: false, message: error.message });
+      return respondWithError(res, 404, error.message);
     }
     if (error.code === 'ACCOUNT_INACTIVE') {
-      return res.status(403).json({ ok: false, message: error.message });
+      return respondWithError(res, 403, error.message);
     }
     if (error.code === 'SLOT_FULL') {
-      return res.status(409).json({ ok: false, message: error.message });
+      return respondWithError(res, 409, error.message);
     }
     if (error.type === 'StripeInvalidRequestError') {
-      return res.status(400).json({ ok: false, message: error.message });
+      return respondWithError(res, 400, error.message);
     }
     return next(error);
   }

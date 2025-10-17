@@ -1,28 +1,35 @@
 const User = require('../../models/User');
 
-function mapUser(userDoc) {
-  return {
-    id: userDoc.id,
-    email: userDoc.email,
-    name: userDoc.name,
-    role: userDoc.role,
-  };
-}
-
 const MAX_FAILED_ATTEMPTS = 3;
 const LOCK_DURATION_MINUTES = 15;
 
+const ERROR_CODES = Object.freeze({
+  inactive: 'ACCOUNT_INACTIVE',
+  locked: 'ACCOUNT_LOCKED',
+  emailTaken: 'EMAIL_TAKEN',
+});
+
+const toViewModel = userDoc => ({
+  id: userDoc.id,
+  email: userDoc.email,
+  name: userDoc.name,
+  role: userDoc.role,
+});
+
+const normalizeEmail = value => value.trim().toLowerCase();
+
+const createError = (code, message, extra = {}) => Object.assign(new Error(message), { code, ...extra });
+
 async function authenticate(email, password) {
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const user = await User.findOne({ email: normalizedEmail });
   if (!user) return null;
 
   const now = new Date();
   if (user.lockUntil && user.lockUntil > now) {
-    const error = new Error('Too many failed attempts. Please try again later.');
-    error.code = 'ACCOUNT_LOCKED';
-    error.lockUntil = user.lockUntil;
-    throw error;
+    throw createError(ERROR_CODES.locked, 'Too many failed attempts. Please try again later.', {
+      lockUntil: user.lockUntil,
+    });
   }
 
   if (user.lockUntil && user.lockUntil <= now) {
@@ -32,35 +39,30 @@ async function authenticate(email, password) {
   }
 
   if (!user.isActive) {
-    const error = new Error('This account is not active. Please contact support.');
-    error.code = 'ACCOUNT_INACTIVE';
-    throw error;
+    throw createError(ERROR_CODES.inactive, 'This account is not active. Please contact support.');
   }
 
   const passwordOk = await user.verifyPassword(password);
   if (!passwordOk) {
     const lockedUntil = await user.registerFailedLogin(MAX_FAILED_ATTEMPTS, LOCK_DURATION_MINUTES);
     if (lockedUntil) {
-      const error = new Error('Account locked due to repeated failed attempts.');
-      error.code = 'ACCOUNT_LOCKED';
-      error.lockUntil = lockedUntil;
-      throw error;
+      throw createError(ERROR_CODES.locked, 'Account locked due to repeated failed attempts.', {
+        lockUntil: lockedUntil,
+      });
     }
     return null;
   }
 
   await user.resetLoginAttempts();
 
-  return mapUser(user);
+  return toViewModel(user);
 }
 
 async function createUser({ name, email, password }) {
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
   const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
-    const error = new Error('An account already exists for this email');
-    error.code = 'EMAIL_TAKEN';
-    throw error;
+    throw createError(ERROR_CODES.emailTaken, 'An account already exists for this email');
   }
 
   const passwordHash = await User.hashPassword(password);
@@ -71,15 +73,16 @@ async function createUser({ name, email, password }) {
     role: 'regular',
   });
 
-  return mapUser(user);
+  return toViewModel(user);
 }
 
 async function findUserByEmail(email) {
-  return User.findOne({ email: email.trim().toLowerCase() });
+  return User.findOne({ email: normalizeEmail(email) });
 }
 
 module.exports = {
   authenticate,
   createUser,
   findUserByEmail,
+  ERROR_CODES,
 };

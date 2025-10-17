@@ -22,6 +22,34 @@ if (SUPPORTED_PAYMENT_METHODS.size === 0) {
   SUPPORTED_PAYMENT_METHODS.add('card');
 }
 
+const respondWithError = (res, status, message, extra = {}) => (
+  res.status(status).json({ ok: false, message, ...extra })
+);
+
+const respondWithValidationError = (res, error) => respondWithError(
+  res,
+  400,
+  error.issues?.[0]?.message || 'Invalid request',
+  { issues: error.issues },
+);
+
+const parseOrRespond = (schema, payload, res) => {
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    respondWithValidationError(res, result.error);
+    return null;
+  }
+  return result.data;
+};
+
+const ensureStripeConfigured = res => {
+  if (!stripe) {
+    respondWithError(res, 500, 'Stripe is not configured');
+    return false;
+  }
+  return true;
+};
+
 const listBillsSchema = z.object({
   userId: z.string({ required_error: 'userId is required' }).min(1),
 });
@@ -34,9 +62,18 @@ const checkoutSchema = z.object({
   paymentMethods: z.array(z.string()).optional(),
 });
 
+const syncParamsSchema = z.object({ sessionId: z.string().min(1) });
+const receiptParamsSchema = z.object({ transactionId: z.string().min(1) });
+const receiptQuerySchema = z.object({ userId: z.string().min(1) });
+
 async function listBills(req, res, next) {
+  const parsedQuery = parseOrRespond(listBillsSchema, req.query, res);
+  if (!parsedQuery) {
+    return undefined;
+  }
+
   try {
-    const { userId } = listBillsSchema.parse(req.query);
+    const { userId } = parsedQuery;
     const bills = await Bill.find({ userId }).sort({ dueDate: 1 }).lean();
     const billIds = bills.map(bill => bill._id);
 
@@ -90,31 +127,32 @@ async function listBills(req, res, next) {
       supportedPaymentMethods: Array.from(SUPPORTED_PAYMENT_METHODS),
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.issues?.[0]?.message || 'Invalid request', issues: error.issues });
-    }
     return next(error);
   }
 }
 
 async function createCheckoutSession(req, res, next) {
-  try {
-    if (!stripe) {
-      return res.status(500).json({ ok: false, message: 'Stripe is not configured' });
-    }
+  if (!ensureStripeConfigured(res)) {
+    return undefined;
+  }
 
-    const payload = checkoutSchema.parse(req.body);
+  const payload = parseOrRespond(checkoutSchema, req.body, res);
+  if (!payload) {
+    return undefined;
+  }
+
+  try {
     const user = await User.findById(payload.userId).lean();
     if (!user) {
-      return res.status(404).json({ ok: false, message: 'Resident not found' });
+      return respondWithError(res, 404, 'Resident not found');
     }
 
     const bill = await Bill.findOne({ _id: payload.billId, userId: payload.userId });
     if (!bill) {
-      return res.status(404).json({ ok: false, message: 'Bill not found' });
+      return respondWithError(res, 404, 'Bill not found');
     }
     if (bill.status !== 'unpaid') {
-      return res.status(400).json({ ok: false, message: 'This bill has already been processed' });
+      return respondWithError(res, 400, 'This bill has already been processed');
     }
 
     const lineItemDescription = bill.description || `Waste collection bill ${bill.invoiceNumber}`;
@@ -122,9 +160,7 @@ async function createCheckoutSession(req, res, next) {
     const requestedMethods = Array.isArray(payload.paymentMethods) ? payload.paymentMethods : [];
     const unsupportedMethods = requestedMethods.filter(method => !SUPPORTED_PAYMENT_METHODS.has(method));
     if (unsupportedMethods.length) {
-      return res.status(400).json({
-        ok: false,
-        message: `Unsupported payment method(s): ${unsupportedMethods.join(', ')}`,
+      return respondWithError(res, 400, `Unsupported payment method(s): ${unsupportedMethods.join(', ')}`, {
         supportedMethods: Array.from(SUPPORTED_PAYMENT_METHODS),
       });
     }
@@ -186,32 +222,36 @@ async function createCheckoutSession(req, res, next) {
       sessionId: session.id,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.issues?.[0]?.message || 'Invalid request', issues: error.issues });
-    }
     if (error.type === 'StripeInvalidRequestError') {
-      return res.status(400).json({ ok: false, message: error.message });
+      return respondWithError(res, 400, error.message);
     }
     return next(error);
   }
 }
 
 async function syncCheckoutSession(req, res, next) {
-  try {
-    if (!stripe) {
-      return res.status(500).json({ ok: false, message: 'Stripe is not configured' });
-    }
+  if (!ensureStripeConfigured(res)) {
+    return undefined;
+  }
 
-    const { sessionId } = z.object({ sessionId: z.string().min(1) }).parse(req.params);
+  const params = parseOrRespond(syncParamsSchema, req.params, res);
+  if (!params) {
+    return undefined;
+  }
+
+  try {
+    const { sessionId } = params;
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ['payment_intent', 'payment_intent.payment_method', 'payment_intent.charges.data'],
     });
 
-  const transaction = await PaymentTransaction.findOne({ stripeSessionId: sessionId });
-  const bill = transaction ? await Bill.findById(transaction.billId) : await Bill.findOne({ stripeSessionId: sessionId });
+    const transaction = await PaymentTransaction.findOne({ stripeSessionId: sessionId });
+    const bill = transaction
+      ? await Bill.findById(transaction.billId)
+      : await Bill.findOne({ stripeSessionId: sessionId });
 
     if (!session) {
-      return res.status(404).json({ ok: false, message: 'Checkout session not found' });
+      return respondWithError(res, 404, 'Checkout session not found');
     }
 
     if (!transaction || !bill) {
@@ -360,28 +400,28 @@ async function syncCheckoutSession(req, res, next) {
       },
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.issues?.[0]?.message || 'Invalid request' });
-    }
     if (error.type === 'StripeInvalidRequestError') {
-      return res.status(400).json({ ok: false, message: error.message });
+      return respondWithError(res, 400, error.message);
     }
     return next(error);
   }
 }
 
 async function getReceipt(req, res, next) {
-  try {
-    const params = z.object({ transactionId: z.string().min(1) }).parse(req.params);
-    const query = z.object({ userId: z.string().min(1) }).parse(req.query);
+  const params = parseOrRespond(receiptParamsSchema, req.params, res);
+  const query = params ? parseOrRespond(receiptQuerySchema, req.query, res) : null;
+  if (!params || !query) {
+    return undefined;
+  }
 
+  try {
     const transaction = await PaymentTransaction.findOne({
       _id: params.transactionId,
       userId: query.userId,
     }).populate('billId').lean();
 
     if (!transaction) {
-      return res.status(404).json({ ok: false, message: 'Receipt not found' });
+      return respondWithError(res, 404, 'Receipt not found');
     }
 
     const bill = transaction.billId;
@@ -401,9 +441,6 @@ async function getReceipt(req, res, next) {
 
     return res.json({ ok: true, receipt });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.issues?.[0]?.message || 'Invalid request' });
-    }
     return next(error);
   }
 }
