@@ -1,16 +1,4 @@
-/**
- * Analytics Routes
- * 
- * Defines HTTP endpoints for analytics functionality.
- * Follows RESTful API design principles.
- * 
- * Route Definitions:
- * - GET  /config  - Retrieves analytics configuration (filters and date ranges)
- * - POST /report  - Generates a waste analytics report based on criteria
- * 
- * @module routes/analytics
- */
-
+// Routes expose reporting utilities consumed by the admin analytics dashboard.
 const router = require('express').Router();
 const controller = require('./controller');
 

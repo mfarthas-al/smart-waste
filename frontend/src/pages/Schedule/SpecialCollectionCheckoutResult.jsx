@@ -1,24 +1,37 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, CircularProgress, Stack, Typography } from '@mui/material'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
+import { Alert, Box, Card, CardContent, CircularProgress, Stack, Typography } from '@mui/material'
 import { XCircle } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import ConfirmationIllustration from '../../assets/Confirmation.png'
 import SpecialCollectionPaymentSuccessCard from '../../components/SpecialCollectionPaymentSuccessCard.jsx'
 
-export default function SpecialCollectionCheckoutResult({ session }) {
+// Finalises special collection payments and surfaces follow-up actions.
+export default function SpecialCollectionCheckoutResult({ session = null }) {
     const location = useLocation()
     const navigate = useNavigate()
     const search = useMemo(() => new URLSearchParams(location.search), [location.search])
     const redirectStatus = search.get('status') || undefined
     const sessionId = search.get('session_id')
 
-    const [state, setState] = useState({ loading: true, error: null, request: null, paymentStatus: redirectStatus || 'pending' })
+    const [state, setState] = useState({
+        loading: true,
+        error: null,
+        request: null,
+        paymentStatus: redirectStatus || 'pending',
+    })
     const [downloadPending, setDownloadPending] = useState(false)
 
+    // Refetch the payment session details using the redirect parameters provided by Stripe.
     useEffect(() => {
         if (!sessionId) {
-            setState({ loading: false, error: 'Missing checkout session. Please try scheduling again.', request: null, paymentStatus: 'failed' })
-            return
+            setState({
+                loading: false,
+                error: 'Missing checkout session. Please try scheduling again.',
+                request: null,
+                paymentStatus: 'failed',
+            })
+            return undefined
         }
 
         let ignore = false
@@ -30,8 +43,8 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                 let payload = null
                 try {
                     payload = await response.json()
-                } catch {
-                    payload = null
+                } catch (parseError) {
+                    console.warn('Failed to parse checkout details', parseError)
                 }
 
                 if (ignore) return
@@ -68,24 +81,22 @@ export default function SpecialCollectionCheckoutResult({ session }) {
         return () => {
             ignore = true
         }
-    }, [redirectStatus, sessionId])
+        }, [redirectStatus, sessionId])
 
-    const goToSchedule = () => {
+    const goToSchedule = useCallback(() => {
         navigate('/schedule', { replace: true })
-    }
+    }, [navigate])
 
-    const goToDashboard = () => {
-        if (session?.role === 'admin') {
-            navigate('/adminDashboard', { replace: true })
-        } else {
-            navigate('/userDashboard', { replace: true })
-        }
-    }
+    const goToDashboard = useCallback(() => {
+        const target = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
+        navigate(target, { replace: true })
+    }, [navigate, session?.role])
 
     const { loading, error, request, paymentStatus } = state
     const isSuccess = paymentStatus === 'success' && request
 
-    const handleDownloadReceipt = async () => {
+    // Attempt to download the municipal receipt; fall back to alerts on failure.
+    const handleDownloadReceipt = useCallback(async () => {
         if (!request) return
 
         const requestId = request._id || request.id
@@ -126,13 +137,13 @@ export default function SpecialCollectionCheckoutResult({ session }) {
             anchor.click()
             document.body.removeChild(anchor)
             URL.revokeObjectURL(url)
-        } catch (error) {
-            console.error('Receipt download failed', error)
-            window.alert(error.message || 'Could not download the receipt. Please try again later.')
+        } catch (downloadError) {
+            console.error('Receipt download failed', downloadError)
+            window.alert(downloadError.message || 'Could not download the receipt. Please try again later.')
         } finally {
             setDownloadPending(false)
         }
-    }
+    }, [request, session?.id, session?._id])
 
     return (
         <div className="mx-auto flex flex-col gap-4 px-4 py-6 md:px-6 md:py-10" style={{ maxWidth: '1100px' }}>
@@ -178,7 +189,7 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                         </Alert>
                     ) : null}
 
-                    {paymentStatus === 'failed' && !loading ? (
+                    {paymentStatus === 'failed' && !loading && (
                         <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
                             <CardContent>
                                 <Stack spacing={2}>
@@ -194,11 +205,17 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                                 </Stack>
                             </CardContent>
                         </Card>
-                    ) : null}
-
-                    
+                    )}
                 </Stack>
             )}
         </div>
     )
+}
+
+SpecialCollectionCheckoutResult.propTypes = {
+    session: PropTypes.shape({
+        id: PropTypes.string,
+        _id: PropTypes.string,
+        role: PropTypes.string,
+    }),
 }

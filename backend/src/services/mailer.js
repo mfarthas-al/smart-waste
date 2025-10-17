@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 
+// Optional verbose logging for troubleshooting SMTP behaviour.
 const debugMail = (...args) => {
   if (process.env.SMTP_DEBUG === 'true') {
     console.info('[mailer]', ...args);
@@ -8,12 +9,47 @@ const debugMail = (...args) => {
 
 let transporter;
 
+const DEFAULT_TIMEZONE = 'Asia/Colombo';
+const DEFAULT_FROM = 'Smart Waste LK <no-reply@smartwaste.lk>';
+
 const currencyFormatter = new Intl.NumberFormat('en-LK', {
   style: 'currency',
   currency: 'LKR',
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+// Shared formatter keeps all outbound timestamps localised consistently.
+const toLocale = (input, options) => {
+  const value = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(value.getTime())) {
+    return null;
+  }
+  const baseOptions = { timeZone: DEFAULT_TIMEZONE, ...options };
+  return value.toLocaleString('en-GB', baseOptions);
+};
+
+const toDateString = value => toLocale(value, {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+const toTimeString = value => toLocale(value, {
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+// Trims metadata values so they meet Stripe limits without mutating callers.
+const sanitizeMetadata = metadata => {
+  if (!metadata) {
+    return undefined;
+  }
+  const entries = Object.entries(metadata)
+    .filter(([, val]) => val !== undefined && val !== null)
+    .map(([key, val]) => [key, String(val).slice(0, 500)]);
+  return entries.length ? Object.fromEntries(entries) : undefined;
+};
 
 function formatCurrency(amount) {
   const value = Number(amount);
@@ -23,6 +59,7 @@ function formatCurrency(amount) {
   return currencyFormatter.format(value);
 }
 
+// Lazily initialises the SMTP transporter so application boot stays fast.
 function getTransporter() {
   if (transporter) {
     debugMail('Reusing existing transporter');
@@ -55,6 +92,7 @@ function getTransporter() {
   return transporter;
 }
 
+// Low-level helper used by all outbound emails in this service.
 async function sendMail(message) {
   const mailClient = getTransporter();
   if (!mailClient) {
@@ -66,7 +104,7 @@ async function sendMail(message) {
   }
 
   const envelope = {
-    from: process.env.SMTP_FROM || 'Smart Waste LK <no-reply@smartwaste.lk>',
+    from: process.env.SMTP_FROM || DEFAULT_FROM,
     ...message,
   };
 
@@ -89,6 +127,7 @@ async function sendMail(message) {
   }
 }
 
+// Sends residents a confirmation email, optionally attaching a receipt PDF.
 async function sendSpecialCollectionConfirmation({ resident, slot, request, receipt }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
@@ -101,16 +140,14 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
 
   const isPaymentPending = request.paymentStatus === 'pending' && request.paymentRequired !== false;
   const paymentDueAt = request.paymentDueAt || slot.start;
-  const formattedDueAt = paymentDueAt
-    ? new Date(paymentDueAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })
-    : null;
+  const formattedDueAt = toLocale(paymentDueAt);
 
   const subject = isPaymentPending
-    ? `Special collection pending payment: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
-    : `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
-  const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
-  const scheduledDate = new Date(slot.start).toLocaleDateString('en-GB', { timeZone: 'Asia/Colombo', day: 'numeric', month: 'short', year: 'numeric' });
-  const scheduledTime = new Date(slot.start).toLocaleTimeString('en-GB', { timeZone: 'Asia/Colombo', hour: '2-digit', minute: '2-digit' });
+    ? `Special collection pending payment: ${toLocale(slot.start)}`
+    : `Special collection confirmed: ${toLocale(slot.start)}`;
+  const slotWindow = `${toLocale(slot.start)} - ${toLocale(slot.end)}`;
+  const scheduledDate = toDateString(slot.start);
+  const scheduledTime = toTimeString(slot.start);
 
   const subtotal = formatCurrency(request.paymentSubtotal || request.paymentAmount || 0);
   const extraCharge = formatCurrency(request.paymentWeightCharge || 0);
@@ -124,7 +161,7 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
       ? 'Your special waste collection booking is reserved and awaiting payment.'
       : 'Your special waste collection has been scheduled successfully.',
     receipt?.issuedAt
-      ? `Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+      ? `Receipt issued: ${toLocale(receipt.issuedAt)}`
       : null,
     isPaymentPending && formattedDueAt
       ? `Payment due by: ${formattedDueAt}`
@@ -157,7 +194,7 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
   ].filter(line => line !== null && line !== undefined).join('\n');
 
   const receiptIssuedHtml = receipt?.issuedAt
-    ? `<p style="color:#475569;font-size:12px;">Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}</p>`
+    ? `<p style="color:#475569;font-size:12px;">Receipt issued: ${toLocale(receipt.issuedAt)}</p>`
     : '';
   const paymentDueHtml = isPaymentPending && formattedDueAt
     ? `<p style="color:#dc2626;font-size:13px;"><strong>Payment due by:</strong> ${formattedDueAt}</p>`
@@ -221,6 +258,7 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
   return sendMail({ to: resident.email, subject, text, html, attachments });
 }
 
+// Notifies municipal operations when a new special collection is scheduled.
 async function notifyAuthorityOfSpecialPickup({ request, slot }) {
   const authorityEmail = process.env.COLLECTION_AUTHORITY_EMAIL;
   if (!authorityEmail) {
@@ -233,7 +271,7 @@ async function notifyAuthorityOfSpecialPickup({ request, slot }) {
   debugMail('Queueing authority notification', { to: authorityEmail, requestId: request._id?.toString() });
 
   const subject = `New special pickup scheduled (${request.itemType}, ${request.quantity})`;
-  const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
+  const slotWindow = `${toLocale(slot.start)} - ${toLocale(slot.end)}`;
 
   const text = [
     'Special pickup confirmed:',
@@ -254,6 +292,7 @@ async function notifyAuthorityOfSpecialPickup({ request, slot }) {
   return sendMail({ to: authorityEmail, subject, text, html });
 }
 
+// Issues a billing confirmation once Stripe marks a payment as successful.
 async function sendPaymentReceipt({ resident, bill, transaction }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
@@ -268,6 +307,7 @@ async function sendPaymentReceipt({ resident, bill, transaction }) {
   const subject = `Payment received for ${bill.invoiceNumber}`;
   const amount = transaction.amount?.toLocaleString('en-LK', { style: 'currency', currency: bill.currency || 'LKR' });
   const paidAt = transaction.updatedAt || new Date();
+  const paidAtFormatted = toLocale(paidAt);
 
   const receiptLink = transaction.receiptUrl ? `You can download the payment receipt here: ${transaction.receiptUrl}` : 'A receipt is available in the Smart Waste LK portal.';
 
@@ -276,7 +316,7 @@ async function sendPaymentReceipt({ resident, bill, transaction }) {
     '',
     `We received your payment of ${amount} for invoice ${bill.invoiceNumber}.`,
     `Payment reference: ${transaction.stripePaymentIntentId || transaction.stripeSessionId}`,
-    `Paid on: ${paidAt.toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`,
+    `Paid on: ${paidAtFormatted}`,
     '',
     receiptLink,
     '',
@@ -289,7 +329,7 @@ async function sendPaymentReceipt({ resident, bill, transaction }) {
   <p>We received your payment of <strong>${amount}</strong> for invoice <strong>${bill.invoiceNumber}</strong>.</p>
   <ul>
     <li><strong>Payment reference:</strong> ${transaction.stripePaymentIntentId || transaction.stripeSessionId}</li>
-    <li><strong>Paid on:</strong> ${paidAt.toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}</li>
+    <li><strong>Paid on:</strong> ${paidAtFormatted}</li>
   </ul>
   <p>${transaction.receiptUrl ? `<a href="${transaction.receiptUrl}">Download your receipt</a>` : 'A receipt is available in the Smart Waste LK portal.'}</p>
   <p>Thank you for keeping your waste services up to date.</p>
@@ -303,4 +343,5 @@ module.exports = {
   sendSpecialCollectionConfirmation,
   notifyAuthorityOfSpecialPickup,
   sendPaymentReceipt,
+  sanitizeMetadata,
 };

@@ -1,20 +1,26 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Chip, LinearProgress } from '@mui/material'
 import { AlertTriangle, CheckCircle2, Clock8, Loader2, MapPin, ThermometerSun } from 'lucide-react'
 
+// Hard-coded route context for the field collector mobile view.
+const TRUCK_ID = 'TRUCK-01'
+const ROUTE_ENDPOINT = `/api/ops/routes/${TRUCK_ID}/today`
+
+// Provides the on-shift collector with live route progress and completion tools.
 export default function CollectorView() {
   const [stops, setStops] = useState([])
   const [loading, setLoading] = useState(true)
   const [pendingBin, setPendingBin] = useState('')
   const [banner, setBanner] = useState(null)
 
+  // Load the current route once on mount and guard against stale state updates.
   useEffect(() => {
     let isMounted = true
     async function load() {
       try {
         setLoading(true)
         setBanner(null)
-        const response = await fetch('/api/ops/routes/TRUCK-01/today')
+        const response = await fetch(ROUTE_ENDPOINT)
         if (!response.ok) {
           throw new Error(`Route fetch failed with status ${response.status}`)
         }
@@ -33,14 +39,15 @@ export default function CollectorView() {
     return () => { isMounted = false }
   }, [])
 
-  async function markCollected(binId) {
+  // Persist the collection event and optimistically update the local checklist state.
+  const markCollected = useCallback(async binId => {
     try {
       setPendingBin(binId)
       setBanner(null)
       const res = await fetch('/api/ops/collections', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ binId, truckId: 'TRUCK-01' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binId, truckId: TRUCK_ID }),
       })
       if (!res.ok) {
         setBanner({ tone: 'error', message: 'Could not mark as collected. Check connectivity and retry.' })
@@ -54,10 +61,11 @@ export default function CollectorView() {
     } finally {
       setPendingBin('')
     }
-  }
+  }, [])
 
   const completed = useMemo(() => stops.filter(stop => stop.visited).length, [stops])
   const totalStops = stops.length
+  // Summaries keep the header progress indicator and remaining count in sync with the checklist.
   const progress = totalStops === 0 ? 0 : Math.round((completed / totalStops) * 100)
 
   return (
@@ -146,6 +154,7 @@ export default function CollectorView() {
             {stops.map(stop => {
               const isVisited = Boolean(stop.visited)
               const isPendingAction = pendingBin === stop.binId
+              // Disable the action while we persist the update to avoid double submissions.
               return (
                 <li key={stop.binId} className="flex flex-wrap items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
                   <div className="flex min-w-[12rem] flex-col">

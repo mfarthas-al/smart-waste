@@ -1,26 +1,49 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
 import { Alert, Box, Button, CircularProgress, Checkbox, FormControlLabel, Paper, Stack, TextField, Typography } from '@mui/material'
-import { UserPlus } from 'lucide-react';
+import { UserPlus } from 'lucide-react'
 
-export default function RegisterPage({ onRegister }) {
+const INITIAL_FORM = Object.freeze({ name: '', email: '', password: '', confirmPassword: '' })
+
+// Perform lightweight client-side validation and return the first blocking issue.
+function validateForm(form) {
+  if (!form.name.trim()) {
+    return 'Please provide your full name.'
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+    return 'Enter a valid email address.'
+  }
+  if (form.password.length < 8) {
+    return 'Password must be at least 8 characters long.'
+  }
+  if (form.password !== form.confirmPassword) {
+    return 'Passwords do not match.'
+  }
+  return null
+}
+
+// Guides new municipal users through account creation and redirects after success.
+export default function RegisterPage({ onRegister = () => {} }) {
   const navigate = useNavigate()
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' })
+  const [form, setForm] = useState(INITIAL_FORM)
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState(null)
 
-  const handleChange = event => {
+  // Memoize validation to keep button states and submission logic aligned.
+  const validationMessage = useMemo(() => validateForm(form), [form])
+
+  const handleChange = useCallback(event => {
     const { name, value } = event.target
     setForm(prev => ({ ...prev, [name]: value }))
-  }
+  }, [])
 
-  const handleSubmit = async event => {
+  const handleSubmit = useCallback(async event => {
     event.preventDefault()
     setFeedback(null)
 
-    if (form.password !== form.confirmPassword) {
-
-      setFeedback({ type: 'error', message: 'Passwords do not match' })
+    if (validationMessage) {
+      setFeedback({ type: 'error', message: validationMessage })
       return
     }
 
@@ -41,10 +64,8 @@ export default function RegisterPage({ onRegister }) {
         throw new Error(payload.message || 'Registration failed')
       }
 
-      setFeedback({ type: 'success', message: payload.message })
-      if (onRegister) {
-        onRegister(payload.user)
-      }
+      setFeedback({ type: 'success', message: payload.message || 'Registration successful.' })
+      onRegister(payload.user)
 
       const destination = payload.user.role === 'admin' ? '/adminDashboard' : '/userDashboard'
       navigate(destination, { replace: true })
@@ -53,7 +74,7 @@ export default function RegisterPage({ onRegister }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [form, navigate, onRegister, validationMessage])
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-6xl flex-col items-center justify-center gap-10 px-6 py-12">
@@ -143,4 +164,8 @@ export default function RegisterPage({ onRegister }) {
       </Paper>
     </div>
   )
+}
+
+RegisterPage.propTypes = {
+  onRegister: PropTypes.func,
 }

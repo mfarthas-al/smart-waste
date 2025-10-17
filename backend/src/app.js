@@ -3,7 +3,9 @@ const cors = require('cors');
 const morgan = require('morgan');
 const routes = require('./routes');
 
+// Builds the API app with common middleware before mounting feature routes.
 const app = express();
+app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));

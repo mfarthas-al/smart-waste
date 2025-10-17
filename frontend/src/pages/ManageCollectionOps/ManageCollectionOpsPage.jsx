@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, CardContent, Chip, LinearProgress } from '@mui/material'
-import { Loader2, MapPinned, Flame, ShieldCheck, Gauge, Timer, Route as RouteIcon, Truck, AlertTriangle, CheckCircle2, MapPin, FileDown } from 'lucide-react'
-import { buildCollectionOpsReport, formatDuration } from './reporting.js'
+import { Alert, Button, Card, CardContent, Chip, Divider, LinearProgress } from '@mui/material'
+import { Loader2, MapPinned, Share2, FileDown, ShieldCheck, Gauge, Timer, Route as RouteIcon, Truck } from 'lucide-react'
 import RouteMap from './RouteMap.jsx'
 import ZoneSelector from '../RouteOptimization/ZoneSelector.jsx'
 import MiniZoneMap from '../RouteOptimization/MiniZoneMap.jsx'
@@ -9,6 +8,7 @@ import KpiCard from '../RouteOptimization/KpiCard.jsx'
 import SummaryCard from '../RouteOptimization/SummaryCard.jsx'
 import ProgressSteps from '../RouteOptimization/ProgressSteps.jsx'
 
+// Offline-friendly fallback cities used when the API catalogue is unavailable.
 const FALLBACK_CITIES = [
   {
     name: 'Homagama',
@@ -36,6 +36,7 @@ const FALLBACK_CITIES = [
   },
 ]
 
+// Default progress steps mirrored in the progress widget.
 const PROGRESS_TEMPLATE = [
   { label: 'Gathering bin telemetry', status: 'idle' },
   { label: 'Balancing truck loads', status: 'idle' },
@@ -43,8 +44,23 @@ const PROGRESS_TEMPLATE = [
   { label: 'Finalizing dispatch plan', status: 'idle' },
 ]
 
-const FUEL_BURN_RATE_L_PER_KM = 0.32 // Approximate diesel burn for medium waste truck
-const HIGH_PRIORITY_RATIO = 0.4
+const INITIAL_ZONE_DETAILS = Object.freeze({ totalBins: '—', areaSize: '—', population: '—', lastCollection: '—' })
+const DEFAULT_CAPACITY = 3000
+const OPTIMIZE_ENDPOINT = '/api/ops/routes/optimize'
+const CITIES_ENDPOINT = '/api/ops/cities'
+const BINS_ENDPOINT = '/api/ops/bins'
+const DIRECTIONS_ENDPOINT = '/api/ops/routes'
+
+// Produce a progress step array with updated status values for the UI timeline.
+const createProgressState = (activeIndex = -1, status = 'idle') => PROGRESS_TEMPLATE.map((step, index) => {
+  if (status === 'done') {
+    return { ...step, status: 'done' }
+  }
+  if (activeIndex === -1) {
+    return { ...step, status: 'idle' }
+  }
+  return { ...step, status: index === activeIndex ? 'active' : index < activeIndex ? 'done' : 'idle' }
+})
 
 const formatDateLabel = value => {
   if (!value) return '—'
@@ -60,23 +76,15 @@ const formatMetric = value => {
   return '—'
 }
 
+// Coordinates the end-to-end optimization workflow for operations managers.
 export default function ManageCollectionOpsPage() {
   const [cities, setCities] = useState([])
   const [city, setCity] = useState('')
   const [plan, setPlan] = useState(null)
   const [directions, setDirections] = useState(null)
   const [bins, setBins] = useState([])
-  const [zoneDetails, setZoneDetails] = useState({ totalBins: '—', areaSize: '—', population: '—', lastCollection: '—' })
-  const [progressSteps, setProgressSteps] = useState(PROGRESS_TEMPLATE.map(step => ({ ...step })))
-  const [summaryMetrics, setSummaryMetrics] = useState({
-    activeZones: null,
-    totalZones: null,
-    availableTrucks: null,
-    fleetSize: null,
-    engagedTrucks: null,
-    totalBins: null,
-  })
-  const [planFetching, setPlanFetching] = useState(false)
+  const [zoneDetails, setZoneDetails] = useState(INITIAL_ZONE_DETAILS)
+  const [progressSteps, setProgressSteps] = useState(createProgressState())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastOptimizedAt, setLastOptimizedAt] = useState(null)
@@ -208,11 +216,12 @@ export default function ManageCollectionOpsPage() {
     }
   }, [city, selectedCity, fetchDirections])
 
+  // Load the managed city catalogue, falling back to static data when the API fails.
   useEffect(() => {
     let ignore = false
     async function loadCities() {
       try {
-        const res = await fetch('/api/ops/cities')
+  const res = await fetch(CITIES_ENDPOINT)
         if (!res.ok) {
           throw new Error(`Failed to load cities (${res.status})`)
         }
@@ -240,13 +249,14 @@ export default function ManageCollectionOpsPage() {
     }
   }, [loadSummary])
 
+  // Whenever the selected city changes, fetch bins scoped to that municipality.
   useEffect(() => {
     if (!city) return
     let ignore = false
 
     async function loadBins() {
       try {
-        const res = await fetch(`/api/ops/bins?city=${encodeURIComponent(city)}`)
+  const res = await fetch(`${BINS_ENDPOINT}?city=${encodeURIComponent(city)}`)
         if (!res.ok) {
           throw new Error(`Failed to load bins (${res.status})`)
         }
@@ -268,13 +278,13 @@ export default function ManageCollectionOpsPage() {
     }
   }, [city])
 
+  // Reset derived state whenever the active city changes.
   useEffect(() => {
     setPlan(null)
     setDirections(null)
     setError('')
     setLastOptimizedAt(null)
-    setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step })))
-    setLiveSync(false)
+  setProgressSteps(createProgressState())
   }, [city])
 
   useEffect(() => {
@@ -303,13 +313,14 @@ export default function ManageCollectionOpsPage() {
   const currentDepot = plan?.depot ?? selectedCity?.depot
   const depotLat = currentDepot?.lat ? currentDepot.lat.toFixed(3) : '—'
   const depotLon = currentDepot?.lon ? currentDepot.lon.toFixed(3) : '—'
-  const capacityLimit = plan?.summary?.truckCapacityKg ?? 3000
+  const capacityLimit = plan?.summary?.truckCapacityKg ?? DEFAULT_CAPACITY
 
   useEffect(() => {
     if (!selectedCity) {
       setZoneDetails({ totalBins: bins.length || '—', areaSize: '—', population: '—', lastCollection: '—' })
       return
     }
+    // Derive lightweight descriptors for the summary card so the UI renders instantly after selection changes.
     const totalBins = bins.length > 0 ? bins.length : '—'
     const area = typeof selectedCity.areaSqKm === 'number'
       ? selectedCity.areaSqKm.toLocaleString(undefined, { maximumFractionDigits: 1 })
@@ -327,13 +338,15 @@ export default function ManageCollectionOpsPage() {
     })
   }, [selectedCity, bins.length])
 
-  async function optimize() {
+  // Request a fresh optimized route plan and update progress indicators as we go.
+  const optimize = useCallback(async () => {
     if (!city) return
     setLoading(true)
     setError('')
-    setProgressSteps(PROGRESS_TEMPLATE.map((step, index) => ({ ...step, status: index === 0 ? 'active' : 'idle' })))
+    // Immediately transition the progress timeline so operators see feedback before the request resolves.
+    setProgressSteps(createProgressState(0))
     try {
-      const res = await fetch('/api/ops/routes/optimize', {
+      const res = await fetch(OPTIMIZE_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ city }),
@@ -358,13 +371,18 @@ export default function ManageCollectionOpsPage() {
       }
       setPlan(normalized)
       setLastOptimizedAt(new Date())
-      setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step, status: 'done' })))
+      setProgressSteps(createProgressState(-1, 'done'))
 
       if (normalized.truckId) {
-        const directionData = await fetchDirections(normalized.truckId)
-        if (directionData) {
-          setDirections({ ...directionData, truckId: normalized.truckId })
-        } else {
+        try {
+          const dirRes = await fetch(`${DIRECTIONS_ENDPOINT}/${encodeURIComponent(normalized.truckId)}/directions`)
+          if (!dirRes.ok) {
+            throw new Error(`Directions failed (${dirRes.status})`)
+          }
+          const directionsData = await dirRes.json()
+          setDirections(directionsData)
+        } catch (directionErr) {
+          console.error('directions error', directionErr)
           setDirections(null)
         }
       } else {
@@ -376,11 +394,11 @@ export default function ManageCollectionOpsPage() {
     } catch (err) {
       console.error('optimize error', err)
       setError('Could not optimize right now. Please try again in a moment.')
-      setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step })))
+      setProgressSteps(createProgressState())
     } finally {
       setLoading(false)
     }
-  }
+  }, [city, selectedCity])
 
   const markCollected = useCallback(async binId => {
     if (!binId) return
@@ -565,6 +583,7 @@ export default function ManageCollectionOpsPage() {
       ? `Threshold ≥ ${Math.round(plan.summary.threshold * 100)}%`
       : 'Current settings'
 
+    // Memoise derived KPI descriptions because the cards re-render frequently during loading states.
     return [
       {
         label: 'Stops scheduled',

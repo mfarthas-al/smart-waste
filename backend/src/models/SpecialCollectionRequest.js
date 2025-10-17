@@ -1,11 +1,22 @@
 const { Schema, model, Types } = require('mongoose');
 
+const REQUEST_STATUSES = Object.freeze(['scheduled', 'cancelled', 'pending-payment', 'payment-failed']);
+const PAYMENT_STATUSES = Object.freeze(['pending', 'success', 'failed', 'not-required']);
+
+const schemaOptions = {
+  timestamps: true,
+  toJSON: { versionKey: false },
+  toObject: { versionKey: false },
+};
+
+// Embedded representation of the chosen booking slot.
 const slotSchema = new Schema({
   slotId: { type: String, required: true },
   start: { type: Date, required: true },
   end: { type: Date, required: true },
 }, { _id: false });
 
+// Core document for the special collection booking workflow.
 const requestSchema = new Schema({
   userId: { type: Types.ObjectId, ref: 'User', required: true },
   userEmail: { type: String, required: true },
@@ -26,14 +37,14 @@ const requestSchema = new Schema({
   slot: { type: slotSchema, required: true },
   status: {
     type: String,
-    enum: ['scheduled', 'cancelled', 'pending-payment', 'payment-failed'],
-    default: 'scheduled',
+    enum: REQUEST_STATUSES,
+    default: REQUEST_STATUSES[0],
   },
   paymentRequired: { type: Boolean, default: false },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'success', 'failed', 'not-required'],
-    default: 'not-required',
+    enum: PAYMENT_STATUSES,
+    default: PAYMENT_STATUSES[3],
   },
   paymentAmount: { type: Number, default: 0 },
   paymentSubtotal: { type: Number, default: 0 },
@@ -47,8 +58,9 @@ const requestSchema = new Schema({
     authoritySentAt: { type: Date },
   },
   cancellationReason: { type: String },
-}, { timestamps: true });
+}, schemaOptions);
 
+// Supports identifying slot capacity breaches while keeping query predicates simple.
 requestSchema.index({ 'slot.slotId': 1 });
 requestSchema.index({ userId: 1, createdAt: -1 });
 

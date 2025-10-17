@@ -1,3 +1,4 @@
+// Special collection scheduling endpoints consumed by the resident portal.
 const router = require('express').Router();
 const controller = require('./controller');
 

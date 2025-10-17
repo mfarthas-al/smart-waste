@@ -1,28 +1,41 @@
+import { useCallback, useMemo } from 'react'
+import PropTypes from 'prop-types'
 import { Box, Button, Card, CardContent, Divider, Grid, Stack, Typography } from '@mui/material'
 import { Check, Download } from 'lucide-react'
 
-const currencyFormatter = new Intl.NumberFormat('en-LK', {
-  style: 'currency',
-  currency: 'LKR',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
+const BASE_LOCALE = 'en-LK'
+const DEFAULT_CURRENCY = 'LKR'
+
+// Cache per-currency formatters to avoid repeatedly instantiating Intl.NumberFormat.
+const formatterCache = new Map()
+
+const getCurrencyFormatter = (currency = DEFAULT_CURRENCY) => {
+  const key = currency.toUpperCase()
+  if (formatterCache.has(key)) {
+    return formatterCache.get(key)
+  }
+
+  const formatter = new Intl.NumberFormat(BASE_LOCALE, {
+    style: 'currency',
+    currency: key,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+
+  formatterCache.set(key, formatter)
+  return formatter
+}
 
 function formatCurrency(amount, currency = 'LKR') {
   const value = Number(amount)
   if (!Number.isFinite(value)) {
-    return currencyFormatter.format(0)
+    return getCurrencyFormatter(DEFAULT_CURRENCY).format(0)
   }
   try {
-    return new Intl.NumberFormat('en-LK', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value)
+    return getCurrencyFormatter(currency).format(value)
   } catch (error) {
     console.warn('Failed to format amount', error)
-    return currencyFormatter.format(value)
+    return getCurrencyFormatter(DEFAULT_CURRENCY).format(value)
   }
 }
 
@@ -32,6 +45,7 @@ function formatWeight(value) {
   return `${num.toFixed(1)} kg`
 }
 
+// Displays the payment confirmation summary for a special collection booking.
 export default function SpecialCollectionPaymentSuccessCard({
   request,
   payment = {},
@@ -42,28 +56,51 @@ export default function SpecialCollectionPaymentSuccessCard({
   illustrationSrc,
   illustrationAlt = 'Confirmation Illustration',
 }) {
-  const totalPaid = payment.total ?? request?.paymentAmount ?? 0
-  const subtotal = payment.subtotal ?? request?.paymentSubtotal ?? totalPaid
-  const extraCharge = payment.extraCharge ?? request?.paymentWeightCharge ?? 0
-  const taxCharge = payment.tax ?? request?.paymentTaxCharge ?? 0
-  const currency = request?.currency || request?.paymentCurrency || payment.currency || 'LKR'
+  // Normalise payment values so the UI works even when the API omits optional fields.
+  const { totalPaid, subtotal, extraCharge, taxCharge, currency } = useMemo(() => {
+    const derivedTotal = payment.total ?? request?.paymentAmount ?? 0
+    return {
+      totalPaid: derivedTotal,
+      subtotal: payment.subtotal ?? request?.paymentSubtotal ?? derivedTotal,
+      extraCharge: payment.extraCharge ?? request?.paymentWeightCharge ?? 0,
+      taxCharge: payment.tax ?? request?.paymentTaxCharge ?? 0,
+      currency: request?.currency || request?.paymentCurrency || payment.currency || DEFAULT_CURRENCY,
+    }
+  }, [payment, request])
 
-  const slotStart = request?.slot?.start ? new Date(request.slot.start) : null
-  const scheduledDate = slotStart
-    ? slotStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-    : '—'
-  const scheduledTime = slotStart
-    ? slotStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-    : '—'
-  const approxWeightDisplay = request?.approxWeightKg ? `${formatWeight(request.approxWeightKg)} per item` : null
-  const totalWeightDisplay = request?.totalWeightKg ? formatWeight(request.totalWeightKg) : null
+  // Cache the parsed slot start date so repeated formatting calls stay cheap.
+  const slotStart = useMemo(() => (request?.slot?.start ? new Date(request.slot.start) : null), [request?.slot?.start])
 
-  const handleStripeReceipt = () => {
+  const scheduledDate = useMemo(() => (
+    slotStart
+      ? slotStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '—'
+  ), [slotStart])
+
+  const scheduledTime = useMemo(() => (
+    slotStart
+      ? slotStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      : '—'
+  ), [slotStart])
+
+  const approxWeightDisplay = useMemo(
+    () => (request?.approxWeightKg ? `${formatWeight(request.approxWeightKg)} per item` : null),
+    [request?.approxWeightKg],
+  )
+
+  const totalWeightDisplay = useMemo(
+    () => (request?.totalWeightKg ? formatWeight(request.totalWeightKg) : null),
+    [request?.totalWeightKg],
+  )
+
+  // Use a friendlier label when Stripe already generated the PDF receipt.
+  const downloadLabel = useMemo(() => (stripeReceiptUrl ? 'Download PDF' : 'Download'), [stripeReceiptUrl])
+
+  // Stripe URLs are opened in a new tab so the current confirmation state is preserved.
+  const handleStripeReceipt = useCallback(() => {
     if (!stripeReceiptUrl) return
     window.open(stripeReceiptUrl, '_blank', 'noopener,noreferrer')
-  }
-
-  const downloadLabel = stripeReceiptUrl ? 'Download PDF' : 'Download'
+  }, [stripeReceiptUrl])
 
   return (
     <Card className="rounded-3xl border border-slate-200/70 shadow-lg" sx={{ overflow: 'hidden', width: '100%' }}>
@@ -353,4 +390,57 @@ export default function SpecialCollectionPaymentSuccessCard({
       </CardContent>
     </Card>
   )
+}
+
+SpecialCollectionPaymentSuccessCard.propTypes = {
+  request: PropTypes.shape({
+    address: PropTypes.string,
+    district: PropTypes.string,
+    contactPhone: PropTypes.string,
+    contactEmail: PropTypes.string,
+    itemLabel: PropTypes.string,
+    itemType: PropTypes.string,
+    quantity: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    slot: PropTypes.shape({
+      start: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.instanceOf(Date)]),
+      end: PropTypes.oneOfType([PropTypes.string, PropTypes.number, PropTypes.instanceOf(Date)]),
+    }),
+    approxWeightKg: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    totalWeightKg: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    paymentAmount: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    paymentSubtotal: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    paymentWeightCharge: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    paymentTaxCharge: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    paymentCurrency: PropTypes.string,
+    currency: PropTypes.string,
+  }).isRequired,
+  payment: PropTypes.shape({
+    total: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    subtotal: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    extraCharge: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    tax: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    currency: PropTypes.string,
+  }),
+  downloadPending: PropTypes.bool,
+  onDownloadReceipt: PropTypes.func,
+  stripeReceiptUrl: PropTypes.string,
+  actions: PropTypes.arrayOf(PropTypes.shape({
+    label: PropTypes.string.isRequired,
+    onClick: PropTypes.func.isRequired,
+    variant: PropTypes.oneOf(['contained', 'outlined', 'text']),
+    size: PropTypes.oneOf(['small', 'medium', 'large']),
+    color: PropTypes.string,
+  })),
+  illustrationSrc: PropTypes.string,
+  illustrationAlt: PropTypes.string,
+}
+
+SpecialCollectionPaymentSuccessCard.defaultProps = {
+  payment: {},
+  downloadPending: false,
+  onDownloadReceipt: undefined,
+  stripeReceiptUrl: undefined,
+  actions: [],
+  illustrationSrc: undefined,
+  illustrationAlt: 'Confirmation Illustration',
 }

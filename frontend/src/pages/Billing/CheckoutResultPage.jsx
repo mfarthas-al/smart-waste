@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import { Alert, Box, Button, CircularProgress, Stack, Typography } from '@mui/material'
 import { RotateCcw, XCircle } from 'lucide-react'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
@@ -33,7 +34,12 @@ function ResultStatus({ status }) {
   return null
 }
 
-export default function CheckoutResultPage({ session }) {
+ResultStatus.propTypes = {
+  status: PropTypes.string.isRequired,
+}
+
+// Reconciles Stripe checkout sessions and surfaces outcome actions for billing. 
+export default function CheckoutResultPage({ session = null }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const sessionId = searchParams.get('session_id')
@@ -47,6 +53,7 @@ export default function CheckoutResultPage({ session }) {
   const [requestDetails, setRequestDetails] = useState(null)
   const [downloadPending, setDownloadPending] = useState(false)
 
+  // Establish the final checkout status as soon as the Stripe session id is available.
   useEffect(() => {
     if (!session) {
       setError('Sign in to finish checking out your payment session.')
@@ -74,7 +81,7 @@ export default function CheckoutResultPage({ session }) {
         setReceiptUrl(payload.data?.receiptUrl || payload.data?.transaction?.receiptUrl || null)
         setAmount(typeof amountTotal === 'number' ? amountTotal / 100 : payload.data?.bill?.amount ?? null)
         setCurrency(currencyCode)
-  setBill(payload.data?.bill || null)
+        setBill(payload.data?.bill || null)
         setRequestDetails(payload.data?.request || null)
       } catch (err) {
         setError(err.message)
@@ -86,19 +93,17 @@ export default function CheckoutResultPage({ session }) {
     syncSession()
   }, [session, sessionId])
 
-  const handleReturn = () => {
+  const handleReturn = useCallback(() => {
     navigate('/billing', { replace: true })
-  }
+  }, [navigate])
 
-  const goToDashboard = () => {
-    if (session?.role === 'admin') {
-      navigate('/adminDashboard', { replace: true })
-    } else {
-      navigate('/userDashboard', { replace: true })
-    }
-  }
+  const goToDashboard = useCallback(() => {
+    const target = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
+    navigate(target, { replace: true })
+  }, [navigate, session?.role])
 
-  const handleDownloadReceipt = async () => {
+  // Download the PDF receipt directly when possible, otherwise fall back to Stripe's hosted receipt.
+  const handleDownloadReceipt = useCallback(async () => {
     const request = requestDetails
     if (!request) {
       if (receiptUrl) {
@@ -155,32 +160,39 @@ export default function CheckoutResultPage({ session }) {
     } finally {
       setDownloadPending(false)
     }
-  }
+  }, [receiptUrl, requestDetails, session?._id, session?.id])
 
   const dashboardPath = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
-  const fallbackCurrency = (requestDetails?.paymentCurrency || requestDetails?.currency || bill?.currency || currency || 'LKR').toUpperCase()
+  // Ensure all payment summaries render with a consistent, upper-cased currency code.
+  const fallbackCurrency = useMemo(
+    () => (requestDetails?.paymentCurrency || requestDetails?.currency || bill?.currency || currency || 'LKR').toUpperCase(),
+    [bill?.currency, currency, requestDetails],
+  )
 
-  const mergedRequest = requestDetails
-    ? {
-        ...requestDetails,
-        paymentCurrency: requestDetails.paymentCurrency || requestDetails.currency || fallbackCurrency,
-      }
-    : null
+  // Merge request details with fallback currency to keep downstream views aligned.
+  const mergedRequest = useMemo(() => {
+    if (!requestDetails) return null
+    return {
+      ...requestDetails,
+      paymentCurrency: requestDetails.paymentCurrency || requestDetails.currency || fallbackCurrency,
+    }
+  }, [requestDetails, fallbackCurrency])
 
-  const paymentDetails = {
+  // Build a display-friendly payment summary regardless of whether the request or bill provided the data.
+  const paymentDetails = useMemo(() => ({
     total: requestDetails?.paymentAmount ?? bill?.amount ?? amount ?? 0,
     subtotal: requestDetails?.paymentSubtotal ?? bill?.amount ?? amount ?? 0,
     extraCharge: requestDetails?.paymentWeightCharge ?? 0,
     tax: requestDetails?.paymentTaxCharge ?? 0,
     currency: fallbackCurrency,
-  }
+  }), [amount, bill?.amount, fallbackCurrency, requestDetails])
 
   const isSuccess = status === 'success'
 
-  const successActions = [
+  const successActions = useMemo(() => ([
     { label: 'Go to Billing', variant: 'contained', onClick: handleReturn },
     { label: 'View Dashboard', variant: 'outlined', onClick: goToDashboard },
-  ]
+  ]), [goToDashboard, handleReturn])
 
   return (
     <div className="mx-auto flex flex-col gap-4 px-4 py-6 md:px-6 md:py-10" style={{ maxWidth: '1100px' }}>
@@ -241,4 +253,12 @@ export default function CheckoutResultPage({ session }) {
       )}
     </div>
   )
+}
+
+CheckoutResultPage.propTypes = {
+  session: PropTypes.shape({
+    id: PropTypes.string,
+    _id: PropTypes.string,
+    role: PropTypes.string,
+  }),
 }

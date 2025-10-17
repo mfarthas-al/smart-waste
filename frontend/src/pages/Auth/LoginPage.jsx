@@ -1,13 +1,16 @@
-import { useState } from 'react'
-import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom'
+import React, { useState, useCallback } from 'react'
+import PropTypes from 'prop-types'
+import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material'
 import { ShieldCheck } from 'lucide-react'
 
-export default function LoginPage({ onLogin }) {
+// Presents the login workflow for field teams and redirects after a successful sign-in.
+export default function LoginPage({ onLogin = () => {} }) {
     const navigate = useNavigate()
     const location = useLocation()
     const [form, setForm] = useState({ email: '', password: '' })
     const [loading, setLoading] = useState(false)
+    // Derive initial notice when the user was redirected here after another action
     const [feedback, setFeedback] = useState(() => {
         if (location.state?.notice) {
             return { type: 'info', message: location.state.notice }
@@ -15,12 +18,13 @@ export default function LoginPage({ onLogin }) {
         return null
     })
 
-    const handleChange = event => {
+    const handleChange = useCallback(event => {
         const { name, value } = event.target
         setForm(prev => ({ ...prev, [name]: value }))
-    }
+    }, [])
 
-    const handleSubmit = async event => {
+    // Handles the entire authentication round-trip and navigation on success
+    const handleSubmit = useCallback(async event => {
         event.preventDefault()
         setLoading(true)
         setFeedback(null)
@@ -40,10 +44,8 @@ export default function LoginPage({ onLogin }) {
                 throw new Error((payload.message || 'Login failed') + lockNotice)
             }
 
-            setFeedback({ type: 'success', message: payload.message })
-            if (onLogin) {
-                onLogin(payload.user)
-            }
+            setFeedback({ type: 'success', message: payload.message || 'Signed in successfully.' })
+            onLogin(payload.user)
 
             const destination = payload.user.role === 'admin' ? '/adminDashboard' : '/userDashboard'
             navigate(destination, { replace: true })
@@ -52,7 +54,7 @@ export default function LoginPage({ onLogin }) {
         } finally {
             setLoading(false)
         }
-    }
+    }, [form, navigate, onLogin])
 
     return (
         <div className="mx-auto flex min-h-[70vh] max-w-6xl flex-col items-center justify-center gap-10 px-6 py-12">
@@ -120,4 +122,8 @@ export default function LoginPage({ onLogin }) {
             </Paper>
         </div>
     )
+}
+
+LoginPage.propTypes = {
+    onLogin: PropTypes.func,
 }

@@ -1,49 +1,16 @@
 const { Schema, model } = require('mongoose');
 
-/**
- * Constants for waste collection record enumerations
- * Following Single Responsibility Principle (SRP) by separating configuration
- */
-const CUSTOMER_TYPES = {
-  HOUSEHOLD: 'household',
-  BUSINESS: 'business',
+const CUSTOMER_TYPES = Object.freeze(['household', 'business']);
+const WASTE_TYPES = Object.freeze(['household', 'business', 'organic', 'recyclable', 'non-recyclable', 'industrial']);
+const BILLING_MODELS = Object.freeze(['weight-based', 'flat-fee', 'subscription']);
+
+const schemaOptions = {
+  timestamps: true,
+  toJSON: { versionKey: false },
+  toObject: { versionKey: false },
 };
 
-const WASTE_TYPES = {
-  HOUSEHOLD: 'household',
-  BUSINESS: 'business',
-  ORGANIC: 'organic',
-  RECYCLABLE: 'recyclable',
-  NON_RECYCLABLE: 'non-recyclable',
-  INDUSTRIAL: 'industrial',
-};
-
-const BILLING_MODELS = {
-  WEIGHT_BASED: 'weight-based',
-  FLAT_FEE: 'flat-fee',
-  SUBSCRIPTION: 'subscription',
-};
-
-/**
- * Waste Collection Record Schema
- * 
- * Represents a single waste collection event for tracking and analytics purposes.
- * This model follows the Information Expert pattern by encapsulating waste collection
- * data and related business logic.
- * 
- * @schema WasteCollectionRecord
- * @property {Date} collectionDate - The date when waste was collected
- * @property {String} region - Geographic region of the collection
- * @property {String} zone - Specific zone within the region (optional)
- * @property {String} householdId - Unique identifier for the household/business
- * @property {String} customerType - Type of customer (household/business)
- * @property {String} wasteType - Category of waste collected
- * @property {String} billingModel - Billing method applied to this collection
- * @property {Number} weightKg - Total weight of waste in kilograms
- * @property {Number} recyclableKg - Weight of recyclable waste in kilograms
- * @property {Number} nonRecyclableKg - Weight of non-recyclable waste in kilograms
- * @property {Number} recyclableRatio - Ratio of recyclable to total waste (0-1)
- */
+// Aggregation-friendly snapshot of each pickup for analytics.
 const recordSchema = new Schema({
   collectionDate: { 
     type: Date, 
@@ -73,63 +40,26 @@ const recordSchema = new Schema({
   },
   customerType: {
     type: String,
-    enum: {
-      values: Object.values(CUSTOMER_TYPES),
-      message: '{VALUE} is not a valid customer type',
-    },
-    default: CUSTOMER_TYPES.HOUSEHOLD,
+    enum: CUSTOMER_TYPES,
+    default: CUSTOMER_TYPES[0],
   },
   wasteType: {
     type: String,
-    enum: {
-      values: Object.values(WASTE_TYPES),
-      message: '{VALUE} is not a valid waste type',
-    },
-    required: [true, 'Waste type is required'],
+    enum: WASTE_TYPES,
+    required: true,
   },
   billingModel: {
     type: String,
-    enum: {
-      values: Object.values(BILLING_MODELS),
-      message: '{VALUE} is not a valid billing model',
-    },
-    required: [true, 'Billing model is required'],
+    enum: BILLING_MODELS,
+    required: true,
   },
-  weightKg: { 
-    type: Number, 
-    required: [true, 'Weight is required'], 
-    min: [0, 'Weight cannot be negative'],
-    validate: {
-      validator: Number.isFinite,
-      message: 'Weight must be a valid number',
-    },
-  },
-  recyclableKg: { 
-    type: Number, 
-    default: 0, 
-    min: [0, 'Recyclable weight cannot be negative'],
-  },
-  nonRecyclableKg: { 
-    type: Number, 
-    default: 0, 
-    min: [0, 'Non-recyclable weight cannot be negative'],
-  },
-  recyclableRatio: { 
-    type: Number, 
-    default: 0, 
-    min: [0, 'Recyclable ratio cannot be negative'],
-    max: [1, 'Recyclable ratio cannot exceed 1'],
-  },
-}, { 
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true },
-});
+  weightKg: { type: Number, required: true, min: 0 },
+  recyclableKg: { type: Number, default: 0, min: 0 },
+  nonRecyclableKg: { type: Number, default: 0, min: 0 },
+  recyclableRatio: { type: Number, default: 0, min: 0 },
+}, schemaOptions);
 
-/**
- * Compound indexes for optimized query performance
- * These indexes support common analytics queries combining region and date
- */
+// Enables dashboards to slice records by geography, billing model, and waste type efficiently.
 recordSchema.index({ region: 1, collectionDate: -1 });
 recordSchema.index({ billingModel: 1, collectionDate: -1 });
 recordSchema.index({ wasteType: 1, collectionDate: -1 });

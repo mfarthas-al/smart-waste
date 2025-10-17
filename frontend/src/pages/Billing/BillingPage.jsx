@@ -1,30 +1,47 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material'
 import { Banknote, CreditCard, Download, ExternalLink, Receipt, RefreshCcw, Wallet } from 'lucide-react'
 
+// Cache currency formatter instances so repeated renders avoid recreating Intl objects.
+const CURRENCY_FORMATTERS = new Map()
+const PAYMENT_METHOD_LABELS = Object.freeze({
+  card: 'Card (Visa / Mastercard)',
+  link: 'Stripe Link (saved payment)',
+})
+const MS_PER_DAY = 86_400_000
+
+function getCurrencyFormatter(currency) {
+  const key = currency?.toUpperCase() || 'LKR'
+  if (!CURRENCY_FORMATTERS.has(key)) {
+    CURRENCY_FORMATTERS.set(
+      key,
+      new Intl.NumberFormat('en-LK', {
+        style: 'currency',
+        currency: key,
+        minimumFractionDigits: 2,
+      }),
+    )
+  }
+  return CURRENCY_FORMATTERS.get(key)
+}
+
 function formatCurrency(amount, currency = 'LKR') {
-  if (typeof amount !== 'number') return '--'
+  if (typeof amount !== 'number' || Number.isNaN(amount)) return '--'
   try {
-    return amount.toLocaleString('en-LK', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    })
+    return getCurrencyFormatter(currency).format(amount)
   } catch {
     return `LKR ${amount.toFixed(2)}`
   }
 }
 
-const PAYMENT_METHOD_LABELS = {
-  card: 'Card (Visa / Mastercard)',
-  link: 'Stripe Link (saved payment)',
-}
-
+// Normalize due dates to midnight to show how many whole days remain.
 function computeDueInDays(dueDate) {
   if (!dueDate) return null
-  const today = new Date()
   const due = new Date(dueDate)
-  const diff = (due.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)) / 86_400_000
+  if (Number.isNaN(due.getTime())) return null
+  const today = new Date()
+  const diff = (due.setHours(0, 0, 0, 0) - today.setHours(0, 0, 0, 0)) / MS_PER_DAY
   return Math.round(diff)
 }
 
@@ -103,6 +120,26 @@ function BillCard({ bill, selectedMethod, onMethodChange, onPay, processing, sup
   )
 }
 
+BillCard.propTypes = {
+  bill: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    invoiceNumber: PropTypes.string.isRequired,
+    description: PropTypes.string,
+    dueDate: PropTypes.string,
+    amount: PropTypes.number.isRequired,
+    currency: PropTypes.string,
+  }).isRequired,
+  selectedMethod: PropTypes.string.isRequired,
+  onMethodChange: PropTypes.func.isRequired,
+  onPay: PropTypes.func.isRequired,
+  processing: PropTypes.bool.isRequired,
+  supportedMethods: PropTypes.arrayOf(PropTypes.string),
+}
+
+BillCard.defaultProps = {
+  supportedMethods: undefined,
+}
+
 function PaidBillRow({ bill, onDownloadReceipt }) {
   const transaction = bill.latestTransaction
   const receiptAvailable = Boolean(transaction?.receiptUrl)
@@ -160,20 +197,39 @@ function PaidBillRow({ bill, onDownloadReceipt }) {
   )
 }
 
-export default function BillingPage({ session, variant = 'page' }) {
+PaidBillRow.propTypes = {
+  bill: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    invoiceNumber: PropTypes.string.isRequired,
+    paidAt: PropTypes.string,
+    amount: PropTypes.number.isRequired,
+    currency: PropTypes.string,
+    latestTransaction: PropTypes.shape({
+      _id: PropTypes.string,
+      receiptUrl: PropTypes.string,
+      paymentMethod: PropTypes.string,
+    }),
+  }).isRequired,
+  onDownloadReceipt: PropTypes.func.isRequired,
+}
+
+// Coordinates billing summaries, outstanding invoices, and Stripe-based checkout flows.
+export default function BillingPage({ session = null, variant = 'page' }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [data, setData] = useState(null)
   const [processingBillId, setProcessingBillId] = useState(null)
   const [selectedMethods, setSelectedMethods] = useState({})
   const [receiptFeedback, setReceiptFeedback] = useState(null)
+  const userId = useMemo(() => session?.id || session?._id || null, [session])
 
+  // Pull the latest billing snapshot and sync default payment method selections.
   const loadBills = useCallback(async () => {
-    if (!session?.id && !session?._id) return
+    if (!userId) return
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch(`/api/billing/bills?userId=${session.id || session._id}`)
+      const response = await fetch(`/api/billing/bills?userId=${userId}`)
       const payload = await response.json()
       if (!response.ok) {
         throw new Error(payload.message || 'Unable to load billing data')
@@ -183,7 +239,7 @@ export default function BillingPage({ session, variant = 'page' }) {
       setSelectedMethods(prev => {
         const next = { ...prev }
         const supported = payload.supportedPaymentMethods?.length ? payload.supportedPaymentMethods : ['card']
-        payload.bills?.outstanding?.forEach(bill => {
+  payload.bills?.outstanding?.forEach(bill => {
           const currentMethod = next[bill._id]
           if (!currentMethod || !supported.includes(currentMethod)) {
             next[bill._id] = supported[0]
@@ -196,22 +252,22 @@ export default function BillingPage({ session, variant = 'page' }) {
     } finally {
       setLoading(false)
     }
-  }, [session])
+  }, [userId])
 
   useEffect(() => {
     loadBills()
   }, [loadBills])
 
-  const outstandingBills = data?.bills?.outstanding ?? []
-  const paidBills = data?.bills?.paid ?? []
-  const summary = data?.summary
+  const outstandingBills = useMemo(() => data?.bills?.outstanding ?? [], [data])
+  const paidBills = useMemo(() => data?.bills?.paid ?? [], [data])
+  const summary = useMemo(() => data?.summary ?? null, [data])
 
-  const handleMethodChange = (billId, value) => {
+  const handleMethodChange = useCallback((billId, value) => {
     setSelectedMethods(prev => ({ ...prev, [billId]: value }))
-  }
+  }, [])
 
-  const handlePay = async bill => {
-    if (!session) return
+  const handlePay = useCallback(async bill => {
+    if (!userId) return
     setProcessingBillId(bill._id)
     setError(null)
     try {
@@ -220,7 +276,7 @@ export default function BillingPage({ session, variant = 'page' }) {
       const cancelUrl = `${origin}/billing/checkout?status=cancelled&session_id={CHECKOUT_SESSION_ID}`
 
       const body = {
-        userId: session.id || session._id,
+        userId,
         billId: bill._id,
         successUrl,
         cancelUrl,
@@ -242,13 +298,13 @@ export default function BillingPage({ session, variant = 'page' }) {
       setError(err.message)
       setProcessingBillId(null)
     }
-  }
+  }, [selectedMethods, userId])
 
-  const handleDownloadReceipt = async transactionId => {
+  const handleDownloadReceipt = useCallback(async transactionId => {
     if (!transactionId) return
     setReceiptFeedback(null)
     try {
-      const response = await fetch(`/api/billing/transactions/${transactionId}/receipt?userId=${session.id || session._id}`)
+      const response = await fetch(`/api/billing/transactions/${transactionId}/receipt?userId=${userId}`)
       const payload = await response.json()
       if (!response.ok) {
         throw new Error(payload.message || 'Unable to fetch receipt')
@@ -269,7 +325,7 @@ export default function BillingPage({ session, variant = 'page' }) {
     } catch (err) {
       setReceiptFeedback({ type: 'error', message: err.message })
     }
-  }
+  }, [userId])
 
   const emptyState = !loading && outstandingBills.length === 0
 
@@ -413,4 +469,13 @@ export default function BillingPage({ session, variant = 'page' }) {
       </Stack>
     </div>
   )
+}
+
+BillingPage.propTypes = {
+  session: PropTypes.shape({
+    id: PropTypes.string,
+    _id: PropTypes.string,
+    role: PropTypes.string,
+  }),
+  variant: PropTypes.oneOf(['page', 'embedded']),
 }

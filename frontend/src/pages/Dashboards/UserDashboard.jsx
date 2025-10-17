@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import PropTypes from 'prop-types'
 import { Link } from 'react-router-dom'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, Drawer, IconButton, Stack, Tooltip, Typography, useMediaQuery, useTheme, } from '@mui/material'
 import { CalendarClock, ChevronLeft, ChevronRight, History, Menu, RefreshCcw, Wallet, X, } from 'lucide-react'
 import BillingPage from '../Billing/BillingPage.jsx'
 
-const dashboardSections = [
+// Static navigation model for the end-user dashboard sections.
+const dashboardSections = Object.freeze([
   { id: 'billing', label: 'Billing & payments', icon: Wallet, description: 'Manage invoices and receipts' },
   { id: 'schedule-upcoming', label: 'Upcoming pickups', icon: CalendarClock, description: 'Confirmed collection slots' },
   { id: 'schedule-history', label: 'Pickup history', icon: History, description: 'Completed and cancelled requests' },
-]
+])
 
+// Map request statuses to colour tokens for MUI components.
 const statusColorMap = {
   scheduled: 'success',
   cancelled: 'default',
@@ -32,6 +35,7 @@ function titleCase(value = '') {
     .join(' ')
 }
 
+// Defensive helper to parse optional JSON bodies coming from the API.
 async function readJson(response) {
   const text = await response.text()
   if (!text) return {}
@@ -77,20 +81,35 @@ function formatStatusLabel(status) {
   return titleCase(status.replace(/-/g, ' '))
 }
 
+// Cache per-currency Intl.NumberFormat instances for summary widgets.
+const CURRENCY_FORMATTERS = new Map()
+
+function getCurrencyFormatter(currency) {
+  const code = currency?.toUpperCase() || 'LKR'
+  if (!CURRENCY_FORMATTERS.has(code)) {
+    CURRENCY_FORMATTERS.set(
+      code,
+      new Intl.NumberFormat('en-LK', {
+        style: 'currency',
+        currency: code,
+        minimumFractionDigits: 2,
+      }),
+    )
+  }
+  return CURRENCY_FORMATTERS.get(code)
+}
+
 function formatCurrency(amount, currency = 'LKR') {
   if (typeof amount !== 'number' || Number.isNaN(amount)) return null
   try {
-    return amount.toLocaleString('en-LK', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    })
+    return getCurrencyFormatter(currency).format(amount)
   } catch (error) {
     console.warn('Failed to format amount', error)
     return `${currency} ${amount.toFixed(2)}`
   }
 }
 
+// Aggregate special collection scheduling data for the dashboard widgets.
 function useSchedulingData(session) {
   const [requests, setRequests] = useState([])
   const [config, setConfig] = useState(null)
@@ -160,6 +179,7 @@ const NAV_WIDTH_EXPANDED = 280
 const NAV_WIDTH_COLLAPSED = 96
 const NAV_TOP_OFFSET = 104
 
+// Renders the left-hand navigation rail and handles section switching.
 function NavigationItems({ collapsed, activeSection, onNavigate, onClose, isDesktop }) {
   return (
     <Stack spacing={1}>
@@ -216,6 +236,20 @@ function NavigationItems({ collapsed, activeSection, onNavigate, onClose, isDesk
   )
 }
 
+NavigationItems.propTypes = {
+  collapsed: PropTypes.bool,
+  activeSection: PropTypes.string.isRequired,
+  onNavigate: PropTypes.func.isRequired,
+  onClose: PropTypes.func,
+  isDesktop: PropTypes.bool,
+}
+
+NavigationItems.defaultProps = {
+  collapsed: false,
+  onClose: undefined,
+  isDesktop: false,
+}
+
 function DashboardSideNav({ collapsed, onToggle, activeSection, onNavigate }) {
   const width = collapsed ? NAV_WIDTH_COLLAPSED : NAV_WIDTH_EXPANDED
 
@@ -262,6 +296,13 @@ function DashboardSideNav({ collapsed, onToggle, activeSection, onNavigate }) {
   )
 }
 
+DashboardSideNav.propTypes = {
+  collapsed: PropTypes.bool.isRequired,
+  onToggle: PropTypes.func.isRequired,
+  activeSection: PropTypes.string.isRequired,
+  onNavigate: PropTypes.func.isRequired,
+}
+
 function MobileNavigationDrawer({ open, onClose, activeSection, onNavigate }) {
   return (
     <Drawer
@@ -298,6 +339,13 @@ function MobileNavigationDrawer({ open, onClose, activeSection, onNavigate }) {
       </Box>
     </Drawer>
   )
+}
+
+MobileNavigationDrawer.propTypes = {
+  open: PropTypes.bool.isRequired,
+  onClose: PropTypes.func.isRequired,
+  activeSection: PropTypes.string.isRequired,
+  onNavigate: PropTypes.func.isRequired,
 }
 
 function RequestCard({ request, itemLabelMap, variant = 'default' }) {
@@ -357,6 +405,32 @@ function RequestCard({ request, itemLabelMap, variant = 'default' }) {
       </Stack>
     </Box>
   )
+}
+
+RequestCard.propTypes = {
+  request: PropTypes.shape({
+    _id: PropTypes.string,
+    id: PropTypes.string,
+    itemType: PropTypes.string,
+    slot: PropTypes.shape({
+      start: PropTypes.string,
+      end: PropTypes.string,
+    }),
+    status: PropTypes.string,
+    paymentStatus: PropTypes.string,
+    paymentRequired: PropTypes.bool,
+    paymentAmount: PropTypes.number,
+    currency: PropTypes.string,
+    paymentCurrency: PropTypes.string,
+    quantity: PropTypes.number,
+    createdAt: PropTypes.string,
+  }).isRequired,
+  itemLabelMap: PropTypes.objectOf(PropTypes.string).isRequired,
+  variant: PropTypes.oneOf(['default', 'upcoming', 'billing']),
+}
+
+RequestCard.defaultProps = {
+  variant: 'default',
 }
 
 function BillingSection({ session, requests, itemLabelMap, loading, error, onRefresh }) {
@@ -498,6 +572,23 @@ function BillingSection({ session, requests, itemLabelMap, loading, error, onRef
   )
 }
 
+BillingSection.propTypes = {
+  session: PropTypes.shape({
+    id: PropTypes.string,
+    _id: PropTypes.string,
+  }),
+  requests: PropTypes.arrayOf(PropTypes.object).isRequired,
+  itemLabelMap: PropTypes.objectOf(PropTypes.string).isRequired,
+  loading: PropTypes.bool.isRequired,
+  error: PropTypes.string,
+  onRefresh: PropTypes.func.isRequired,
+}
+
+BillingSection.defaultProps = {
+  session: null,
+  error: null,
+}
+
 function UpcomingSection({ upcoming, itemLabelMap, loading, error, onRefresh }) {
   return (
     <section className="space-y-5">
@@ -569,6 +660,18 @@ function UpcomingSection({ upcoming, itemLabelMap, loading, error, onRefresh }) 
   )
 }
 
+UpcomingSection.propTypes = {
+  upcoming: PropTypes.arrayOf(PropTypes.object).isRequired,
+  itemLabelMap: PropTypes.objectOf(PropTypes.string).isRequired,
+  loading: PropTypes.bool.isRequired,
+  error: PropTypes.string,
+  onRefresh: PropTypes.func.isRequired,
+}
+
+UpcomingSection.defaultProps = {
+  error: null,
+}
+
 function HistorySection({ history, itemLabelMap, loading, onRefresh }) {
   return (
     <section className="space-y-5">
@@ -615,6 +718,14 @@ function HistorySection({ history, itemLabelMap, loading, onRefresh }) {
   )
 }
 
+HistorySection.propTypes = {
+  history: PropTypes.arrayOf(PropTypes.object).isRequired,
+  itemLabelMap: PropTypes.objectOf(PropTypes.string).isRequired,
+  loading: PropTypes.bool.isRequired,
+  onRefresh: PropTypes.func.isRequired,
+}
+
+// Composes billing, scheduling, and navigation panes for citizen users.
 export default function UserDashboard({ session = null }) {
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'))
@@ -674,7 +785,7 @@ export default function UserDashboard({ session = null }) {
     }
   }, [])
 
-  const sectionProps = {
+  const sectionProps = useMemo(() => ({
     billing: {
       session,
       requests,
@@ -696,7 +807,7 @@ export default function UserDashboard({ session = null }) {
       loading,
       onRefresh: refresh,
     },
-  }
+  }), [session, requests, itemLabelMap, loading, error, refresh, upcoming, history])
 
   const ActiveSectionComponent = useMemo(() => {
     if (activeSection === 'schedule-upcoming') return UpcomingSection
@@ -790,4 +901,13 @@ export default function UserDashboard({ session = null }) {
       />
     </Box>
   )
+}
+
+UserDashboard.propTypes = {
+  session: PropTypes.shape({
+    id: PropTypes.string,
+    _id: PropTypes.string,
+    name: PropTypes.string,
+    role: PropTypes.string,
+  }),
 }

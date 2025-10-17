@@ -1,3 +1,4 @@
+// Billing endpoints cover resident invoices and Stripe checkout sync.
 const router = require('express').Router();
 const controller = require('./controller');
 
