@@ -794,6 +794,7 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
   const isPaymentSuccessful = paymentStatus === 'success'
   const isPaymentNotRequired = paymentStatus === 'not-required'
   const statusColor = isPaymentPending ? 'warning.main' : 'success.main'
+  const statusBgColor = isPaymentPending ? 'warning.light' : 'success.light'
   const headingText = isPaymentPending
     ? 'Payment Pending'
     : isPaymentNotRequired
@@ -813,14 +814,45 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
       <CardContent>
         <Grid container spacing={3} alignItems="stretch">
           <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{ width: 70, height: 70, borderRadius: '50%', border: '8px solid', borderColor: statusColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {/* Centered header: icon + title (mirrors checkout result) */}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: { xs: 1.5, sm: 2 },
+                mb: 1,
+                flexDirection: { xs: 'column', sm: 'row' },
+                textAlign: 'center',
+              }}
+            >
+              <Box
+                sx={{
+                  width: { xs: 48, sm: 64 },
+                  height: { xs: 48, sm: 64 },
+                  borderRadius: '50%',
+                  border: '8px solid',
+                  borderColor: statusColor,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  bgcolor: statusBgColor,
+                }}
+              >
                 {headingIcon}
               </Box>
-              <Typography variant="h4" fontWeight={700} sx={{ color: statusColor }}>
+              <Typography
+                variant="h4"
+                fontWeight={700}
+                sx={{
+                  color: statusColor,
+                  letterSpacing: '-0.5px',
+                  fontSize: { xs: '1.5rem', sm: '2rem', md: '2.25rem' },
+                }}
+              >
                 {headingText}
               </Typography>
-            </Stack>
+            </Box>
 
             {isPaymentPending ? (
               <Alert severity="warning" icon={<Clock3 size={18} />}>
