@@ -61,6 +61,7 @@ export default function SpecialCollectionCheckoutResult({ session }) {
     const sessionId = search.get('session_id')
 
     const [state, setState] = useState({ loading: true, error: null, request: null, paymentStatus: redirectStatus || 'pending' })
+    const [downloadPending, setDownloadPending] = useState(false)
 
     useEffect(() => {
         if (!sessionId) {
@@ -146,44 +147,53 @@ export default function SpecialCollectionCheckoutResult({ session }) {
     const approxWeightDisplay = request?.approxWeightKg ? `${formatWeight(request.approxWeightKg)} per item` : null
     const totalWeightDisplay = request?.totalWeightKg ? formatWeight(request.totalWeightKg) : null
 
-    const handleDownloadReceipt = () => {
+    const handleDownloadReceipt = async () => {
         if (!request) return
 
-        const lines = [
-            'Smart Waste LK - Special Collection Receipt',
-            '==========================================',
-            `Reference: ${request._id || request.id || 'N/A'}`,
-            '',
-            'Pickup details:',
-            `  Address: ${request.address || 'N/A'}`,
-            `  District: ${request.district || 'N/A'}`,
-            `  Phone: ${request.contactPhone || 'N/A'}`,
-            `  Email: ${request.contactEmail || 'N/A'}`,
-            `  Item type: ${itemLabel}`,
-            `  Quantity: ${request.quantity}`,
-            approxWeightDisplay ? `  Approx. weight per item: ${approxWeightDisplay}` : null,
-            totalWeightDisplay ? `  Estimated total weight: ${totalWeightDisplay}` : null,
-            `  Scheduled date: ${scheduledDate}`,
-            `  Scheduled time: ${scheduledTime}`,
-            '',
-            'Payment breakdown:',
-            `  Subtotal: ${formatCurrency(subtotal)}`,
-            `  Extra charges: ${formatCurrency(extraCharge)}`,
-            `  Tax: ${formatCurrency(taxCharge)}`,
-            `  Total paid: ${formatCurrency(totalPaid)}`,
-            '',
-            'Thank you for using Smart Waste LK.',
-        ].filter(line => line !== null && line !== undefined)
+        const requestId = request._id || request.id
+        const userId = session?.id || session?._id || request.userId
 
-        const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
-        const url = URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        anchor.download = `special-collection-receipt-${request._id || request.id || Date.now()}.txt`
-        document.body.appendChild(anchor)
-        anchor.click()
-        document.body.removeChild(anchor)
-        URL.revokeObjectURL(url)
+        if (!requestId || !userId) {
+            window.alert('We could not verify your session. Please sign in again to download the receipt.')
+            return
+        }
+
+        try {
+            setDownloadPending(true)
+            const response = await fetch(`/api/schedules/special/requests/${requestId}/receipt?userId=${encodeURIComponent(userId)}`, {
+                headers: {
+                    Accept: 'application/pdf',
+                },
+            })
+
+            if (!response.ok) {
+                let message = 'Could not download the receipt. Please try again.'
+                try {
+                    const payload = await response.json()
+                    if (payload?.message) {
+                        message = payload.message
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse receipt error payload', parseError)
+                }
+                throw new Error(message)
+            }
+
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const anchor = document.createElement('a')
+            anchor.href = url
+            anchor.download = `special-collection-receipt-${requestId}.pdf`
+            document.body.appendChild(anchor)
+            anchor.click()
+            document.body.removeChild(anchor)
+            URL.revokeObjectURL(url)
+        } catch (error) {
+            console.error('Receipt download failed', error)
+            window.alert(error.message || 'Could not download the receipt. Please try again later.')
+        } finally {
+            setDownloadPending(false)
+        }
     }
 
     return (
@@ -208,16 +218,16 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                     )}
 
                     {isSuccess ? (
-                        <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
-                            <CardContent>
-                                <Stack spacing={3}>
-                                    <Stack direction="row" alignItems="center" spacing={2}>
-                                        <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                                        <Typography variant="h6" fontWeight={600}>
-                                            Payment confirmed and pickup scheduled
-                                        </Typography>
-                                    </Stack>
-                                    <Stack spacing={2}>
+                        <Stack spacing={3}>
+                            <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
+                                <CardContent>
+                                    <Stack spacing={2.5}>
+                                        <Stack direction="row" alignItems="center" spacing={2}>
+                                            <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                                            <Typography variant="h6" fontWeight={600}>
+                                                Payment confirmed and pickup scheduled
+                                            </Typography>
+                                        </Stack>
                                         <Typography variant="body1" color="text.secondary">
                                             Your slot has been secured and a receipt is available below. Keep this for your records.
                                         </Typography>
@@ -228,9 +238,11 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                                             </Typography>
                                         </Stack>
                                     </Stack>
+                                </CardContent>
+                            </Card>
 
-                                    <Divider flexItem />
-
+                            <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
+                                <CardContent>
                                     <Stack spacing={3}>
                                         <Stack spacing={1}>
                                             <Typography variant="subtitle1" fontWeight={700}>
@@ -289,15 +301,21 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                                                 <Typography variant="caption" color="text.secondary">
                                                     Total = Subtotal + Extra charges + Tax
                                                 </Typography>
-                                                <Button variant="outlined" startIcon={<Download />} onClick={handleDownloadReceipt} sx={{ alignSelf: 'flex-start' }}>
-                                                    Download receipt
+                                                <Button
+                                                    variant="outlined"
+                                                    startIcon={<Download />}
+                                                    onClick={handleDownloadReceipt}
+                                                    sx={{ alignSelf: 'flex-start' }}
+                                                    disabled={downloadPending}
+                                                >
+                                                    {downloadPending ? 'Preparing receipt…' : 'Download receipt'}
                                                 </Button>
                                             </Stack>
                                         </Stack>
                                     </Stack>
-                                </Stack>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        </Stack>
                     ) : null}
 
                     {!loading && !isSuccess && !error ? (

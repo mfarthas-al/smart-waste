@@ -89,7 +89,7 @@ async function sendMail(message) {
   }
 }
 
-async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
+async function sendSpecialCollectionConfirmation({ resident, slot, request, receipt }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
   }
@@ -113,6 +113,9 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
     `Hello ${resident.name},`,
     '',
     'Your special waste collection has been scheduled successfully.',
+    receipt?.issuedAt
+      ? `Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+      : null,
     '',
     'Pickup details:',
     `  Address: ${request.address}`,
@@ -137,8 +140,13 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
     'Smart Waste LK operations team',
   ].filter(line => line !== null && line !== undefined).join('\n');
 
+  const receiptIssuedHtml = receipt?.issuedAt
+    ? `<p style="color:#475569;font-size:12px;">Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}</p>`
+    : '';
+
   const html = `<p>Hello ${resident.name},</p>
   <p>Your special waste collection has been scheduled successfully.</p>
+  ${receiptIssuedHtml}
   <h3>Pickup details</h3>
   <ul>
     <li><strong>Address:</strong> ${request.address}</li>
@@ -175,7 +183,17 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
   <p>If you need to make changes, contact the municipal hotline at 1919.</p>
   <p>Smart Waste LK operations team</p>`;
 
-  return sendMail({ to: resident.email, subject, text, html });
+  const attachments = receipt?.buffer
+    ? [
+        {
+          filename: receipt.filename || `special-collection-receipt-${request._id || request.id || 'booking'}.pdf`,
+          content: receipt.buffer,
+          contentType: 'application/pdf',
+        },
+      ]
+    : undefined;
+
+  return sendMail({ to: resident.email, subject, text, html, attachments });
 }
 
 async function notifyAuthorityOfSpecialPickup({ request, slot }) {

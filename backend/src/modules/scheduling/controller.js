@@ -7,6 +7,7 @@ const {
   sendSpecialCollectionConfirmation,
   notifyAuthorityOfSpecialPickup,
 } = require('../../services/mailer');
+const { generateSpecialCollectionReceipt } = require('./receipt');
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
@@ -310,7 +311,20 @@ async function finaliseBooking({
     notifications: {},
   });
 
+  const issuedAt = new Date();
+  let receiptBuffer = null;
+
   if (payment.required) {
+    try {
+      receiptBuffer = await generateSpecialCollectionReceipt({
+        request: requestDoc.toObject(),
+        slot,
+        issuedAt,
+      });
+    } catch (receiptError) {
+      console.warn('⚠️ Failed to generate special collection receipt PDF', receiptError);
+    }
+
     const paymentPayload = {
       requestId: requestDoc._id,
       userId: user._id,
@@ -358,6 +372,13 @@ async function finaliseBooking({
         resident: { email: user.email, name: user.name },
         slot,
         request: requestDoc,
+        receipt: receiptBuffer
+          ? {
+              buffer: receiptBuffer,
+              filename: `special-collection-receipt-${requestDoc._id}.pdf`,
+              issuedAt,
+            }
+          : undefined,
       }).catch(error => {
         console.warn('⚠️ Failed to email resident about special collection', error);
         return { sent: false };
@@ -842,6 +863,39 @@ async function listUserRequests(req, res, next) {
   }
 }
 
+async function downloadReceipt(req, res, next) {
+  try {
+    const { requestId } = z.object({ requestId: z.string().min(1) }).parse(req.params);
+    const { userId } = z.object({ userId: z.string().min(1) }).parse(req.query);
+
+    await resolveUser(userId);
+
+    const requestDoc = await SpecialCollectionRequest.findById(requestId).lean();
+    if (!requestDoc) {
+      return res.status(404).json({ ok: false, message: 'Receipt not found. Please refresh your bookings.' });
+    }
+
+    if (requestDoc.userId?.toString?.() !== userId) {
+      return res.status(403).json({ ok: false, message: 'You are not authorised to download this receipt.' });
+    }
+
+    const buffer = await generateSpecialCollectionReceipt({
+      request: requestDoc,
+      slot: requestDoc.slot,
+      issuedAt: new Date(),
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="special-collection-receipt-${requestId}.pdf"`);
+    return res.send(buffer);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, message: error.errors[0]?.message || 'Invalid request' });
+    }
+    return next(error);
+  }
+}
+
 module.exports = {
   getConfig,
   checkAvailability,
@@ -849,4 +903,5 @@ module.exports = {
   startCheckout,
   syncCheckout,
   listUserRequests,
+  downloadReceipt,
 };
