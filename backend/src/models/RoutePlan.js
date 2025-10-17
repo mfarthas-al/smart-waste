@@ -11,7 +11,15 @@ const schema = new Schema({
   depot: { lat: Number, lon: Number },
   stops: [stop],
   loadKg: Number,
-  distanceKm: Number
+  distanceKm: Number,
+  summary: {
+    totalBins: Number,
+    consideredBins: Number,
+    highPriorityBins: Number,
+    truckCapacityKg: Number,
+    trucks: Number,
+    threshold: Number,
+  }
 }, { timestamps: true });
 
 schema.index({ city: 1, truckId: 1, date: 1 })
