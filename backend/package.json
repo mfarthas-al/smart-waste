@@ -3,11 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
+    "dev": "node init && nodemon src/server.js",
+    "start": "node init && node src/server.js",
     "test": "jest --passWithNoTests",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:billing": "jest src/modules/billing",
+    "test:billing:coverage": "jest src/modules/billing --coverage --collectCoverageFrom=\"src/modules/billing/**/*.js\" --collectCoverageFrom=\"src/models/Bill.js\" --collectCoverageFrom=\"src/models/PaymentTransaction.js\"",
     "test:analytics": "jest src/modules/analytics",
     "test:verbose": "jest --verbose"
   },
