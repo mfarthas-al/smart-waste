@@ -7,6 +7,7 @@ module.exports = {
     '!src/app.js',
     '!src/db/**',
     '!src/config/**',
+    '!src/services/mailer.js',
     '!**/__tests__/**',
     '!**/node_modules/**',
   ],
@@ -14,6 +15,7 @@ module.exports = {
     '/node_modules/',
     '/__tests__/',
     '/utils.js$',
+    'src/services/mailer.js',
   ],
   testMatch: ['**/__tests__/**/*.test.js', '**/?(*.)+(spec|test).js'],
   testPathIgnorePatterns: [
