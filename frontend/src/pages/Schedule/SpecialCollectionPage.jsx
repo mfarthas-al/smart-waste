@@ -3,10 +3,11 @@ import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
 import dayjs from 'dayjs'
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
-import { DatePicker } from '@mui/x-date-pickers/DatePicker'
-import { TimePicker } from '@mui/x-date-pickers/TimePicker'
+import { DateCalendar } from '@mui/x-date-pickers/DateCalendar'
+import { DigitalClock } from '@mui/x-date-pickers/DigitalClock'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import ConfirmationIllustration from '../../assets/Confirmation.png'
 
 const initialFormState = {
   residentName: '',
@@ -200,6 +201,7 @@ function RequestForm({
   onBlur,
   onReset,
   isFormValid,
+  slotConfig,
 }) {
   const dateValue = useMemo(() => (form.preferredDate ? dayjs(form.preferredDate) : null), [form.preferredDate])
   const timeValue = useMemo(() => (form.preferredTime ? dayjs(`1970-01-01T${form.preferredTime}`) : null), [form.preferredTime])
@@ -212,6 +214,32 @@ function RequestForm({
   const handleTimeChange = useCallback((newValue) => {
     const formatted = newValue && newValue.isValid() ? newValue.format('HH:mm') : ''
     onChange({ target: { name: 'preferredTime', value: formatted } })
+  }, [onChange])
+
+  const pickerBoxSx = { border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1, minHeight: 340, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+
+  // Config-driven constraints with safe defaults
+  const maxDaysAhead = slotConfig?.daysAhead ?? 30
+  const disableWeekends = Boolean(slotConfig?.disableWeekends)
+  const hoursStart = slotConfig?.hours?.start ?? '08:00'
+  const hoursEnd = slotConfig?.hours?.end ?? '18:00'
+  const minDate = dayjs().startOf('day')
+  const maxDate = dayjs().add(maxDaysAhead, 'day')
+  const minTime = dayjs(`1970-01-01T${hoursStart}`)
+  const maxTime = dayjs(`1970-01-01T${hoursEnd}`)
+
+  const setQuickDate = useCallback((when) => {
+    let d = dayjs().startOf('day')
+    if (when === 'tomorrow') d = d.add(1, 'day')
+    if (when === 'nextMon') {
+      const daysUntilMon = (8 - d.day()) % 7 || 7
+      d = d.add(daysUntilMon, 'day')
+    }
+    onChange({ target: { name: 'preferredDate', value: d.format('YYYY-MM-DD') } })
+  }, [onChange])
+
+  const setQuickTime = useCallback((hhmm) => {
+    onChange({ target: { name: 'preferredTime', value: hhmm } })
   }, [onChange])
 
   return (
@@ -357,42 +385,57 @@ function RequestForm({
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <DatePicker
-                label="Set date"
-                value={dateValue}
-                onChange={handleDateChange}
-                disablePast
-                format="YYYY-MM-DD"
-                slotProps={{
-                  textField: {
-                    required: true,
-                    fullWidth: true,
-                    onBlur,
-                    name: 'preferredDate',
-                    error: Boolean(touched.preferredDate && errors.preferredDate),
-                    helperText: touched.preferredDate && errors.preferredDate,
-                  },
-                }}
-              />
+              <Stack spacing={1.25} sx={{ height: '100%' }}>
+                <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 700 }}>
+                  Set Date:
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Chip size="small" label="Today" onClick={() => setQuickDate('today')} variant="outlined" />
+                  <Chip size="small" label="Tomorrow" onClick={() => setQuickDate('tomorrow')} variant="outlined" />
+                  <Chip size="small" label="Next Mon" onClick={() => setQuickDate('nextMon')} variant="outlined" />
+                </Stack>
+                <Box sx={{ ...pickerBoxSx, flexGrow: 1 }}>
+                  <DateCalendar
+                    value={dateValue}
+                    onChange={handleDateChange}
+                    disablePast
+                    minDate={minDate}
+                    maxDate={maxDate}
+                    shouldDisableDate={disableWeekends ? (d) => [0,6].includes(d.day()) : undefined}
+                  />
+                </Box>
+                {touched.preferredDate && errors.preferredDate ? (
+                  <Typography variant="caption" color="error.main">{errors.preferredDate}</Typography>
+                ) : null}
+              </Stack>
             </Grid>
             <Grid item xs={12} md={6}>
-              <TimePicker
-                label="Set time"
-                value={timeValue}
-                onChange={handleTimeChange}
-                ampm
-                minutesStep={15}
-                slotProps={{
-                  textField: {
-                    required: true,
-                    fullWidth: true,
-                    onBlur,
-                    name: 'preferredTime',
-                    error: Boolean(touched.preferredTime && errors.preferredTime),
-                    helperText: touched.preferredTime && errors.preferredTime,
-                  },
-                }}
-              />
+              <Stack spacing={1.25} sx={{ height: '100%' }}>
+                <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 700 }}>
+                  Set Time:
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Chip size="small" label="9:00 AM" onClick={() => setQuickTime('09:00')} variant="outlined" />
+                  <Chip size="small" label="10:00 AM" onClick={() => setQuickTime('10:00')} variant="outlined" />
+                  <Chip size="small" label="1:00 PM" onClick={() => setQuickTime('13:00')} variant="outlined" />
+                  <Chip size="small" label="3:00 PM" onClick={() => setQuickTime('15:00')} variant="outlined" />
+                </Stack>
+                <Box sx={{ ...pickerBoxSx, flexGrow: 1 }}>
+                  <DigitalClock
+                    value={timeValue}
+                    onChange={handleTimeChange}
+                    ampm
+                    minutesStep={15}
+                    minTime={minTime}
+                    maxTime={maxTime}
+                    skipDisabled
+                    timeStep={30}
+                  />
+                </Box>
+                {touched.preferredTime && errors.preferredTime ? (
+                  <Typography variant="caption" color="error.main">{errors.preferredTime}</Typography>
+                ) : null}
+              </Stack>
             </Grid>
             <Grid item xs={12}>
               <TextField
@@ -727,6 +770,127 @@ function ScheduledRequests({ requests, loading, error, allowedItems, onRefresh }
   )
 }
 
+function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
+  if (!details) return null
+
+  const itemLabel = useMemo(() => {
+    return allowedItems.find(i => i.id === details.request.itemType)?.label || details.request.itemType
+  }, [allowedItems, details.request.itemType])
+
+  const scheduledDate = details.scheduled?.date ? dayjs(details.scheduled.date).format('DD/MM/YYYY') : '—'
+  const scheduledTime = details.scheduled?.time ? dayjs(`1970-01-01T${details.scheduled.time}`).format('hh:mm A') : '—'
+
+  const qty = Number(details.request.quantity || 0)
+  const perItem = Number(details.request.approxWeight || 0)
+  const totalApproxWeight = Number.isFinite(qty * perItem) ? qty * perItem : null
+
+  const subtotal = Number(details.payment?.baseCharge ?? 0)
+  const extra = Number(details.payment?.weightCharge ?? 0)
+  const tax = Number(details.payment?.taxCharge ?? 0)
+  const total = Number(details.payment?.amount ?? 0)
+
+  return (
+    <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
+      <CardContent>
+        <Grid container spacing={3} alignItems="stretch">
+          <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box sx={{ width: 70, height: 70, borderRadius: '50%', border: '8px solid', borderColor: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={32} color="#097969" />
+              </Box>
+              <Typography variant="h4" fontWeight={700} color="success.main">
+                Payment Successful
+              </Typography>
+            </Stack>
+
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="text.secondary">Address:</Typography>
+                <Typography variant="h6" fontWeight={600}>{details.request.address || '—'}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">District:</Typography>
+                <Typography variant="h6" fontWeight={600}>{details.request.district || '—'}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">Item type:</Typography>
+                <Typography variant="h6" fontWeight={600}>{itemLabel}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">Phone:</Typography>
+                <Typography variant="h6" fontWeight={600}>{details.request.phone || '—'}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">Email</Typography>
+                <Typography variant="h6" fontWeight={600}>{details.request.email || '—'}</Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" color="text.secondary">Approx. weight:</Typography>
+                <Typography variant="h6" fontWeight={600}>{totalApproxWeight ? `${totalApproxWeight.toFixed(0)}kg` : (perItem ? `${perItem}kg` : '—')}</Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" color="text.secondary">Quantity:</Typography>
+                <Typography variant="h6" fontWeight={600}>{qty || '—'}</Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="subtitle2" color="text.secondary">Scheduled Time:</Typography>
+                <Typography variant="h6" fontWeight={600}>{scheduledTime}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="subtitle2" color="text.secondary">Scheduled Date:</Typography>
+                <Typography variant="h6" fontWeight={600}>{scheduledDate}</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                {details.payment?.required ? (
+                  <>
+                    <Typography variant="subtitle2" color="text.secondary">Receipt:</Typography>
+                    <Button size="small" variant="text" onClick={() => window.print()} sx={{ textDecoration: 'underline', px: 0 }}>Download</Button>
+                  </>
+                ) : null}
+              </Grid>
+            </Grid>
+
+            <Box sx={{ mt: 2 }}>
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Typography variant="h5" fontWeight={700}>Total</Typography>
+                <Typography variant="h4" fontWeight={700}>{formatCurrency(total)}</Typography>
+              </Stack>
+              <Stack spacing={0.5} sx={{ mt: 1 }}>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography fontWeight={600}>Subtotal:</Typography>
+                  <Typography color="text.secondary">{formatCurrency(subtotal)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography fontWeight={600}>Extra charges:</Typography>
+                  <Typography color="text.secondary">+{formatCurrency(extra)}</Typography>
+                </Stack>
+                <Stack direction="row" justifyContent="space-between">
+                  <Typography fontWeight={600}>Tax:</Typography>
+                  <Typography color="text.secondary">+{formatCurrency(tax)}</Typography>
+                </Stack>
+              </Stack>
+            </Box>
+
+            <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+              <Button variant="outlined" onClick={onBack}>Back</Button>
+              <Button variant="contained" color="success" onClick={onEdit}>Edit Details</Button>
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <Box sx={{ width: '100%', height: '100%', minHeight: 360, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img 
+                src={ConfirmationIllustration} 
+                alt="Confirmation Illustration" 
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            </Box>
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const navigate = useNavigate()
   const sessionId = getSessionId(session)
@@ -749,7 +913,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     session?.contactNumber,
   ])
 
-  const { loading: configLoading, error: configError, items } = useSpecialCollectionConfig()
+  const { loading: configLoading, error: configError, items, slotConfig } = useSpecialCollectionConfig()
   const allowedItems = useMemo(() => items.filter(item => item.allow), [items])
 
   const [form, setForm] = useState(() => ({
@@ -794,6 +958,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const [availabilityLoading, setAvailabilityLoading] = useState(false)
   const [bookingInFlight, setBookingInFlight] = useState(false)
   const [feedback, setFeedback] = useState(null)
+  const [confirmation, setConfirmation] = useState(null)
   const [formError, setFormError] = useState(null)
   const [touched, setTouched] = useState({})
 
@@ -974,6 +1139,23 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
         throw new Error(result?.message || 'Unable to schedule the selected slot.')
       }
 
+      // Capture confirmation snapshot before clearing state
+      setConfirmation({
+        request: {
+          residentName: form.residentName,
+          ownerName: form.ownerName,
+          address: form.address,
+          district: form.district,
+          email: form.email,
+          phone: form.phone,
+          itemType: form.itemType,
+          quantity: form.quantity,
+          approxWeight: form.approxWeight,
+          specialNotes: form.specialNotes,
+        },
+        scheduled: { date: form.preferredDate, time: form.preferredTime, slotId: slot.slotId },
+        payment: availability?.payment || null,
+      })
       setFeedback({ type: 'success', message: result.message })
       setAvailability(null)
       setForm(prev => ({
@@ -1102,42 +1284,56 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           </Alert>
         ) : null}
 
-        <LocalizationProvider dateAdapter={AdapterDayjs}>
-        <Box sx={{ maxWidth: 1100, mx: 'auto', width: '100%' }}>
-          <Grid container spacing={3} alignItems="stretch">
-            <Grid item xs={12} md={7} sx={{ display: 'flex' }}>
-              <RequestForm
-                form={form}
-                allowedItems={allowedItems}
-                selectedPolicy={selectedPolicy}
-                onChange={handleFormChange}
-                onSubmit={handleFormSubmit}
-                availabilityLoading={availabilityLoading || configLoading}
-                isAuthenticated={isAuthenticated}
-                onRequireAuth={ensureAuthenticated}
-                errors={formErrors}
-                touched={touched}
-                onBlur={handleFormBlur}
-                onReset={handleResetForm}
-                isFormValid={isFormValid}
-              />
-            </Grid>
-            <Grid item xs={12} md={5} sx={{ display: 'flex' }}>
-              <PaymentSummary
-                payment={availability?.payment}
-                showBreakdown={form.approxWeight !== '' && Number(form.quantity) > 0}
-              />
-            </Grid>
-          </Grid>
-        </Box>
-        </LocalizationProvider>
+        {feedback?.type === 'success' && confirmation ? (
+          <Box sx={{ maxWidth: 1100, mx: 'auto', width: '100%' }}>
+            <ConfirmationPanel
+              details={confirmation}
+              allowedItems={allowedItems}
+              onBack={() => navigate(-1)}
+              onEdit={() => setFeedback(null)}
+            />
+          </Box>
+        ) : (
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <Box sx={{ maxWidth: 1100, mx: 'auto', width: '100%' }}>
+              <Grid container spacing={3} alignItems="stretch">
+                <Grid item xs={12} md={7} sx={{ display: 'flex' }}>
+                  <RequestForm
+                    form={form}
+                    allowedItems={allowedItems}
+                    selectedPolicy={selectedPolicy}
+                    onChange={handleFormChange}
+                    onSubmit={handleFormSubmit}
+                    availabilityLoading={availabilityLoading || configLoading}
+                    isAuthenticated={isAuthenticated}
+                    onRequireAuth={ensureAuthenticated}
+                    errors={formErrors}
+                    touched={touched}
+                    onBlur={handleFormBlur}
+                    onReset={handleResetForm}
+                    isFormValid={isFormValid}
+                    slotConfig={slotConfig}
+                  />
+                </Grid>
+                <Grid item xs={12} md={5} sx={{ display: 'flex' }}>
+                  <PaymentSummary
+                    payment={availability?.payment}
+                    showBreakdown={form.approxWeight !== '' && Number(form.quantity) > 0}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+          </LocalizationProvider>
+        )}
 
-        <AvailabilitySection
-          availability={availability}
-          loading={availabilityLoading}
-          onConfirmSlot={handleConfirmSlot}
-          bookingInFlight={bookingInFlight}
-        />
+        {feedback?.type === 'success' ? null : (
+          <AvailabilitySection
+            availability={availability}
+            loading={availabilityLoading}
+            onConfirmSlot={handleConfirmSlot}
+            bookingInFlight={bookingInFlight}
+          />
+        )}
 
     <ScheduledRequests
       requests={requests}

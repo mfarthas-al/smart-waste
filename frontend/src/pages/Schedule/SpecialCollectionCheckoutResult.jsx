@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Stack, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Grid, Stack, Typography } from '@mui/material'
 import { CheckCircle2, Clock3, Download, XCircle } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
@@ -218,104 +218,108 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                     )}
 
                     {isSuccess ? (
-                        <Stack spacing={3}>
-                            <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
-                                <CardContent>
-                                    <Stack spacing={2.5}>
-                                        <Stack direction="row" alignItems="center" spacing={2}>
-                                            <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                                            <Typography variant="h6" fontWeight={600}>
-                                                Payment confirmed and pickup scheduled
-                                            </Typography>
-                                        </Stack>
-                                        <Typography variant="body1" color="text.secondary">
-                                            Your slot has been secured and a receipt is available below. Keep this for your records.
-                                        </Typography>
-                                        <Stack direction="row" spacing={1} alignItems="center">
-                                            <Clock3 className="h-4 w-4 text-brand-600" />
-                                            <Typography variant="body2" color="text.secondary">
-                                                {formatSlotTime(request.slot)}
-                                            </Typography>
-                                        </Stack>
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
-                                <CardContent>
-                                    <Stack spacing={3}>
-                                        <Stack spacing={1}>
-                                            <Typography variant="subtitle1" fontWeight={700}>
-                                                Receipt details
-                                            </Typography>
-                                            <Typography variant="body2" color="text.secondary">
-                                                Smart Waste LK special collection booking receipt for {itemLabel}.
+                        <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
+                            <CardContent>
+                                <Grid container spacing={3} alignItems="stretch">
+                                    <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                        <Stack direction="row" spacing={2} alignItems="center">
+                                            <Box sx={{ width: 70, height: 70, borderRadius: '50%', border: '8px solid', borderColor: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <CheckCircle2 size={32} color="#097969" />
+                                            </Box>
+                                            <Typography variant="h4" fontWeight={700} color="success.main">
+                                                Payment Successful
                                             </Typography>
                                         </Stack>
 
-                                        <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
-                                            <Stack spacing={1.5} flex={1}>
-                                                <Typography variant="subtitle2" color="text.secondary">
-                                                    Service information
-                                                </Typography>
-                                                <DetailRow label="Address" value={request.address} />
-                                                <DetailRow label="District" value={request.district} />
-                                                <DetailRow label="Phone" value={request.contactPhone} />
-                                                <DetailRow label="Email" value={request.contactEmail} />
-                                                <DetailRow label="Item type" value={itemLabel} />
-                                                <DetailRow label="Quantity" value={request.quantity} />
-                                                <DetailRow label="Approx. weight" value={approxWeightDisplay} />
-                                                <DetailRow label="Estimated total weight" value={totalWeightDisplay} />
-                                                <DetailRow label="Scheduled date" value={scheduledDate} />
-                                                <DetailRow label="Scheduled time" value={scheduledTime} />
-                                            </Stack>
-
-                                            <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />
-
-                                            <Stack spacing={1.5} flex={1}>
-                                                <Typography variant="subtitle2" color="text.secondary">
-                                                    Payment breakdown
-                                                </Typography>
-                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        Payment amount
-                                                    </Typography>
-                                                    <Typography variant="subtitle1" fontWeight={700}>
-                                                        {formatCurrency(totalPaid)}
-                                                    </Typography>
-                                                </Stack>
-                                                <Stack spacing={0.75}>
-                                                    <Stack direction="row" justifyContent="space-between">
-                                                        <Typography variant="body2" color="text.secondary">Subtotal</Typography>
-                                                        <Typography variant="body2" fontWeight={600}>{formatCurrency(subtotal)}</Typography>
-                                                    </Stack>
-                                                    <Stack direction="row" justifyContent="space-between">
-                                                        <Typography variant="body2" color="text.secondary">Extra charges</Typography>
-                                                        <Typography variant="body2" fontWeight={600}>{formatCurrency(extraCharge)}</Typography>
-                                                    </Stack>
-                                                    <Stack direction="row" justifyContent="space-between">
-                                                        <Typography variant="body2" color="text.secondary">Tax</Typography>
-                                                        <Typography variant="body2" fontWeight={600}>{formatCurrency(taxCharge)}</Typography>
-                                                    </Stack>
-                                                </Stack>
-                                                <Typography variant="caption" color="text.secondary">
-                                                    Total = Subtotal + Extra charges + Tax
-                                                </Typography>
-                                                <Button
-                                                    variant="outlined"
-                                                    startIcon={<Download />}
-                                                    onClick={handleDownloadReceipt}
-                                                    sx={{ alignSelf: 'flex-start' }}
+                                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                                            <Grid item xs={12}>
+                                                <Typography variant="subtitle2" color="text.secondary">Address:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{request.address || '—'}</Typography>
+                                            </Grid>
+                                            <Grid item xs={6}>
+                                                <Typography variant="subtitle2" color="text.secondary">District:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{request.district || '—'}</Typography>
+                                            </Grid>
+                                            <Grid item xs={6}>
+                                                <Typography variant="subtitle2" color="text.secondary">Item type:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{itemLabel}</Typography>
+                                            </Grid>
+                                            <Grid item xs={6}>
+                                                <Typography variant="subtitle2" color="text.secondary">Phone:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{request.contactPhone || '—'}</Typography>
+                                            </Grid>
+                                            <Grid item xs={6}>
+                                                <Typography variant="subtitle2" color="text.secondary">Email</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{request.contactEmail || '—'}</Typography>
+                                            </Grid>
+                                            <Grid item xs={4}>
+                                                <Typography variant="subtitle2" color="text.secondary">Approx. weight:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{totalWeightDisplay || approxWeightDisplay || '—'}</Typography>
+                                            </Grid>
+                                            <Grid item xs={4}>
+                                                <Typography variant="subtitle2" color="text.secondary">Quantity:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{request.quantity || '—'}</Typography>
+                                            </Grid>
+                                            <Grid item xs={4}>
+                                                <Typography variant="subtitle2" color="text.secondary">Scheduled Time:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{scheduledTime}</Typography>
+                                            </Grid>
+                                            <Grid item xs={6}>
+                                                <Typography variant="subtitle2" color="text.secondary">Scheduled Date:</Typography>
+                                                <Typography variant="h6" fontWeight={600}>{scheduledDate}</Typography>
+                                            </Grid>
+                                            <Grid item xs={6}>
+                                                <Typography variant="subtitle2" color="text.secondary">Receipt:</Typography>
+                                                <Button 
+                                                    size="small" 
+                                                    variant="text" 
+                                                    onClick={handleDownloadReceipt} 
                                                     disabled={downloadPending}
+                                                    sx={{ textDecoration: 'underline', px: 0, justifyContent: 'flex-start' }}
                                                 >
-                                                    {downloadPending ? 'Preparing receipt…' : 'Download receipt'}
+                                                    {downloadPending ? 'Preparing…' : 'Download'}
                                                 </Button>
+                                            </Grid>
+                                        </Grid>
+
+                                        <Box sx={{ mt: 2 }}>
+                                            <Stack direction="row" alignItems="center" spacing={1}>
+                                                <Typography variant="h5" fontWeight={700}>Total:</Typography>
+                                                <Typography variant="h4" fontWeight={700}>{formatCurrency(totalPaid)}</Typography>
                                             </Stack>
+                                            <Stack spacing={0.5} sx={{ mt: 1 }}>
+                                                <Stack direction="row" justifyContent="space-between">
+                                                    <Typography fontWeight={600}>Subtotal:</Typography>
+                                                    <Typography color="text.secondary">{formatCurrency(subtotal)}</Typography>
+                                                </Stack>
+                                                <Stack direction="row" justifyContent="space-between">
+                                                    <Typography fontWeight={600}>Extra charges:</Typography>
+                                                    <Typography color="text.secondary">+{formatCurrency(extraCharge)}</Typography>
+                                                </Stack>
+                                                <Stack direction="row" justifyContent="space-between">
+                                                    <Typography fontWeight={600}>Tax:</Typography>
+                                                    <Typography color="text.secondary">+{formatCurrency(taxCharge)}</Typography>
+                                                </Stack>
+                                            </Stack>
+                                        </Box>
+
+                                        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+                                            <Button variant="outlined" onClick={goToDashboard}>Back</Button>
+                                            <Button variant="contained" color="success" onClick={goToSchedule}>Edit Details</Button>
                                         </Stack>
-                                    </Stack>
-                                </CardContent>
-                            </Card>
-                        </Stack>
+                                    </Grid>
+                                    <Grid item xs={12} md={5}>
+                                        <Box sx={{ width: '100%', height: '100%', minHeight: 360, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <img 
+                                                src="/assets/Confirmation Illustration.png" 
+                                                alt="Confirmation Illustration" 
+                                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                                            />
+                                        </Box>
+                                    </Grid>
+                                </Grid>
+                            </CardContent>
+                        </Card>
                     ) : null}
 
                     {!loading && !isSuccess && !error ? (
