@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Box, Button, Card, CardContent, CardHeader, Chip, CircularProgress, Divider, FormControl, FormControlLabel, Grid, InputLabel, MenuItem, Select, Stack, Switch, TextField, Typography, } from '@mui/material'
 import { Save, SlidersHorizontal, BarChart3, LineChart, PieChart, Download } from 'lucide-react'
 import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'
+import PropTypes from 'prop-types'
 
+// Controls which analytical widgets appear in the generated report view.
 const sectionSwitches = [
   { key: 'households', label: 'Household table' },
   { key: 'regions', label: 'Region breakdown' },
@@ -18,8 +20,13 @@ const defaultVisibility = {
   timeline: true,
 }
 
+// Formats weights in kilograms with a consistent decimal precision.
 function formatKg(value) {
-  return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) {
+    return '0 kg'
+  }
+  return `${numeric.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`
 }
 
 function HorizontalMetricBar({ label, value, maxValue, accent }) {
@@ -73,6 +80,11 @@ export default function ReportsPage({ session }) {
   const [error, setError] = useState(null)
   const [noRecordsMessage, setNoRecordsMessage] = useState('')
 
+  const sessionUserId = useMemo(() => {
+    if (!session) return null
+    return session.id ?? session._id ?? null
+  }, [session])
+
   useEffect(() => {
     async function loadConfig() {
       setLoadingConfig(true)
@@ -99,16 +111,16 @@ export default function ReportsPage({ session }) {
     loadConfig()
   }, [])
 
-  const handleFilterChange = event => {
+  const handleFilterChange = useCallback(event => {
     const { name, value } = event.target
     setFilters(prev => ({ ...prev, [name]: value }))
-  }
+  }, [])
 
-  const toggleVisibility = key => {
+  const toggleVisibility = useCallback(key => {
     setVisibility(prev => ({ ...prev, [key]: !prev[key] }))
-  }
+  }, [])
 
-  const handleSubmit = async event => {
+  const handleSubmit = useCallback(async event => {
     event.preventDefault()
     setError(null)
     setNoRecordsMessage('')
@@ -120,8 +132,12 @@ export default function ReportsPage({ session }) {
 
     setLoadingReport(true)
     try {
+      const userId = sessionUserId
+      if (!userId) {
+        throw new Error('You must be signed in to generate analytics reports.')
+      }
       const payload = {
-        userId: session?.id || session?._id,
+        userId,
         criteria: {
           dateRange: {
             from: filters.from,
@@ -153,11 +169,11 @@ export default function ReportsPage({ session }) {
     } finally {
       setLoadingReport(false)
     }
-  }
+  }, [filters.billingModels, filters.from, filters.regions, filters.to, filters.wasteTypes, sessionUserId])
 
   const canExport = Boolean(report)
 
-  const handleExport = format => {
+  const handleExport = useCallback(format => {
     if (!report) return
 
     if (format === 'pdf') {
@@ -201,7 +217,7 @@ export default function ReportsPage({ session }) {
       XLSX.utils.book_append_sheet(workbook, wasteSheet, 'Waste Types')
       XLSX.writeFile(workbook, 'smart-waste-analytics.xlsx')
     }
-  }
+  }, [report])
 
   const maxRegionValue = useMemo(() => {
     if (!report?.charts?.regionSummary?.length) return 0
@@ -550,4 +566,37 @@ export default function ReportsPage({ session }) {
       </Stack>
     </div>
   )
+}
+
+HorizontalMetricBar.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.number.isRequired,
+  maxValue: PropTypes.number.isRequired,
+  accent: PropTypes.string,
+}
+
+HorizontalMetricBar.defaultProps = {
+  accent: undefined,
+}
+
+TimelineSparkline.propTypes = {
+  data: PropTypes.arrayOf(PropTypes.shape({
+    day: PropTypes.string.isRequired,
+    totalKg: PropTypes.number.isRequired,
+  })),
+}
+
+TimelineSparkline.defaultProps = {
+  data: [],
+}
+
+ReportsPage.propTypes = {
+  session: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    _id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }),
+}
+
+ReportsPage.defaultProps = {
+  session: null,
 }
