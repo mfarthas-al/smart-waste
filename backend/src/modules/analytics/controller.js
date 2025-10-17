@@ -10,9 +10,40 @@ const { z } = require('zod');
 const { AnalyticsService } = require('./reportService');
 const User = require('../../models/User');
 
-// Validates the dashboard-driven filters before running heavy aggregations.
-const criteriaSchema = z.object({
-  userId: z.string({ required_error: 'User id is required' }).min(1, 'User id is required'),
+/**
+ * HTTP Status Codes Constants
+ * Following the DRY principle and improving code readability
+ */
+const HTTP_STATUS = {
+  OK: 200,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  INTERNAL_SERVER_ERROR: 500,
+};
+
+/**
+ * Response Messages Constants
+ * Centralized error messages for consistency
+ */
+const MESSAGES = {
+  USER_NOT_AUTHENTICATED: 'User is not authenticated',
+  UNAUTHORIZED_ACCESS: 'You are not authorised to access analytics',
+  INVALID_CRITERIA: 'Invalid criteria',
+  NO_RECORDS: 'No Records Available',
+  CONFIG_LOADED: 'Configuration loaded successfully',
+  REPORT_GENERATED: 'Report generated successfully',
+};
+
+/**
+ * Validation schema for report generation request
+ * Using Zod for runtime type validation
+ * Follows the Fail-Fast principle by validating input early
+ */
+const reportCriteriaSchema = z.object({
+  userId: z
+    .string({ required_error: 'User id is required' })
+    .min(1, 'User id is required'),
   criteria: z.object({
     dateRange: z
       .object({
@@ -32,61 +63,63 @@ const criteriaSchema = z.object({
   }),
 }).strict();
 
-// Lightweight grouping helper so we can build summaries without additional deps.
-function groupBy(array, keyGetter) {
-  return array.reduce((acc, item) => {
-    const key = keyGetter(item)
-    if (!acc.has(key)) {
-      acc.set(key, []);
+/**
+ * Authorization Service
+ * Encapsulates authorization logic following Single Responsibility Principle
+ */
+class AuthorizationService {
+  /**
+   * Validates if a user is authenticated and authorized for analytics
+   *
+   * @param {String} userId - User ID to validate
+   * @returns {Promise<Object>} Object containing authorization status and user
+   */
+  static async validateUserAccess(userId) {
+    const user = await User.findById(userId).lean();
+
+    if (!user) {
+      return {
+        authorized: false,
+        statusCode: HTTP_STATUS.UNAUTHORIZED,
+        message: MESSAGES.USER_NOT_AUTHENTICATED,
+      };
     }
 
-// Surfaces filter metadata so the frontend can pre-populate selectors.
-async function getConfig(_req, res, next) {
-  try {
-    const [regions, wasteTypes, billingModels, firstRecord, lastRecord] = await Promise.all([
-      WasteCollectionRecord.distinct('region').lean(),
-      WasteCollectionRecord.distinct('wasteType').lean(),
-      WasteCollectionRecord.distinct('billingModel').lean(),
-      WasteCollectionRecord.findOne().sort({ collectionDate: 1 }).lean(),
-      WasteCollectionRecord.findOne().sort({ collectionDate: -1 }).lean(),
-    ]);
+    if (user.role !== 'admin') {
+      return {
+        authorized: false,
+        statusCode: HTTP_STATUS.FORBIDDEN,
+        message: MESSAGES.UNAUTHORIZED_ACCESS,
+      };
+    }
 
-    return res.json({
-      ok: true,
-      filters: {
-        regions,
-        wasteTypes,
-        billingModels,
-        defaultDateRange: {
-          from: firstRecord?.collectionDate ?? null,
-          to: lastRecord?.collectionDate ?? null,
-        },
-      },
-    });
-  } catch (error) {
-    return next(error);
+    return { authorized: true, user };
   }
 }
 
-// Converts the validated criteria into a MongoDB selector.
-function buildMatch({ criteria }) {
-  const { dateRange, regions = [], wasteTypes = [], billingModels = [] } = criteria
-  const match = {
-    collectionDate: {
-      $gte: new Date(dateRange.from),
-      $lte: new Date(dateRange.to),
-    },
-  };
-  if (regions.length) {
-    match.region = { $in: regions };
-  }
-  if (wasteTypes.length) {
-    match.wasteType = { $in: wasteTypes };
+/**
+ * Response Handler
+ * Centralizes response formatting following DRY principle
+ */
+class ResponseHandler {
+  /**
+   * Sends a success response
+   *
+   * @param {Object} res - Express response object
+   * @param {Object} data - Data to send in response
+   * @param {String} message - Optional success message
+   */
+  static success(res, data, message = null) {
+    const response = { ok: true, data };
+    if (message) {
+      response.message = message;
+    }
+    return res.status(HTTP_STATUS.OK).json(response);
   }
 
   /**
    * Sends an error response
-   * 
+   *
    * @param {Object} res - Express response object
    * @param {Number} statusCode - HTTP status code
    * @param {String} message - Error message
@@ -101,107 +134,50 @@ function buildMatch({ criteria }) {
   }
 }
 
-// Builds all charts and tables for the analytics view from the raw records.
-function makeReportPayload(records, { criteria }) {
-  const normalizedCriteria = {
-    ...criteria,
-    dateRange: {
-      from: criteria.dateRange.from,
-      to: criteria.dateRange.to,
-    },
-    regions: criteria.regions ?? [],
-    wasteTypes: criteria.wasteTypes ?? [],
-    billingModels: criteria.billingModels ?? [],
-  };
+/**
+ * Retrieves analytics configuration
+ *
+ * This endpoint provides filter options and default date ranges
+ * for the analytics report generation interface.
+ *
+ * @param {Object} _req - Express request object (unused)
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ * @returns {Promise<Object>} JSON response with configuration data
+ */
+async function getConfig(_req, res, next) {
+  try {
+    const filters = await AnalyticsService.getConfiguration();
 
-  const totalWeight = records.reduce((sum, record) => sum + (record.weightKg || 0), 0);
-  const recyclableWeight = records.reduce((sum, record) => sum + (record.recyclableKg || 0), 0);
-  const nonRecyclableWeight = records.reduce((sum, record) => sum + (record.nonRecyclableKg || 0), 0);
-
-  const householdGroups = groupBy(records, record => record.householdId);
-  const households = Array.from(householdGroups.entries()).map(([householdId, items]) => {
-    const householdTotal = items.reduce((sum, item) => sum + (item.weightKg || 0), 0);
-    return {
-      householdId,
-      totalKg: Number(householdTotal.toFixed(2)),
-      averagePickupKg: Number((householdTotal / items.length).toFixed(2)),
-      pickups: items.length,
-      region: items[0]?.region ?? '—',
-      billingModel: items[0]?.billingModel ?? '—',
-    };
-  });
-
-  households.sort((a, b) => b.totalKg - a.totalKg);
-
-  const regionGroups = groupBy(records, record => record.region || 'Unknown');
-  const regionSummary = Array.from(regionGroups.entries()).map(([region, items]) => {
-    const sum = items.reduce((acc, item) => acc + (item.weightKg || 0), 0);
-    return {
-      region,
-      totalKg: Number(sum.toFixed(2)),
-      collectionCount: items.length,
-      averageKg: Number((sum / Math.max(items.length, 1)).toFixed(2)),
-    };
-  }).sort((a, b) => b.totalKg - a.totalKg);
-
-  const wasteTypeGroups = groupBy(records, record => record.wasteType || 'Unknown');
-  const wasteSummary = Array.from(wasteTypeGroups.entries()).map(([wasteType, items]) => {
-    const recyclable = items.reduce((acc, item) => acc + (item.recyclableKg || 0), 0);
-    const nonRecyclable = items.reduce((acc, item) => acc + (item.nonRecyclableKg || 0), 0);
-    return {
-      wasteType,
-      totalKg: Number((recyclable + nonRecyclable).toFixed(2)),
-      recyclableKg: Number(recyclable.toFixed(2)),
-      nonRecyclableKg: Number(nonRecyclable.toFixed(2)),
-    };
-  });
-
-  const timeSeriesGroups = groupBy(records, record => new Date(record.collectionDate).toISOString().slice(0, 10));
-  const timeSeries = Array.from(timeSeriesGroups.entries())
-    .map(([day, items]) => {
-      const dayWeight = items.reduce((acc, item) => acc + (item.weightKg || 0), 0);
-      return {
-        day,
-        totalKg: Number(dayWeight.toFixed(2)),
-        pickups: items.length,
-      };
-    })
-    .sort((a, b) => (a.day < b.day ? -1 : 1));
-
-  return {
-  criteria: normalizedCriteria,
-    totals: {
-      records: records.length,
-      totalWeightKg: Number(totalWeight.toFixed(2)),
-      recyclableWeightKg: Number(recyclableWeight.toFixed(2)),
-      nonRecyclableWeightKg: Number(nonRecyclableWeight.toFixed(2)),
-    },
-    charts: {
-      regionSummary,
-      wasteSummary,
-      recyclingSplit: {
-        recyclableWeightKg: Number(recyclableWeight.toFixed(2)),
-        nonRecyclableWeightKg: Number(nonRecyclableWeight.toFixed(2)),
-      },
-      timeSeries,
-    },
-    tables: {
-      households,
-      regions: regionSummary,
-      wasteTypes: wasteSummary,
-    },
-  };
+    return ResponseHandler.success(res, { filters }, MESSAGES.CONFIG_LOADED);
+  } catch (error) {
+    return next(error);
+  }
 }
 
-// Generates the report payload if the caller is an authorised admin.
+/**
+ * Generates a waste analytics report
+ *
+ * This endpoint validates the request, checks user authorization,
+ * and generates a comprehensive analytics report based on the provided criteria.
+ *
+ * Flow:
+ * 1. Validate request body schema
+ * 2. Verify user authentication and authorization
+ * 3. Generate report using the service layer
+ * 4. Return formatted response
+ *
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ * @returns {Promise<Object>} JSON response with report data or error
+ */
 async function generateReport(req, res, next) {
   try {
-    // Step 1: Validate and parse request payload
     const payload = reportCriteriaSchema.parse(req.body);
 
-    // Step 2: Verify user authorization
     const authResult = await AuthorizationService.validateUserAccess(payload.userId);
-    
+
     if (!authResult.authorized) {
       return ResponseHandler.error(
         res,
@@ -210,19 +186,14 @@ async function generateReport(req, res, next) {
       );
     }
 
-    // Step 3: Generate report using the service layer
     const reportData = await AnalyticsService.generateReport(payload.criteria);
 
-    // Step 4: Handle empty result set
     if (!reportData) {
       return ResponseHandler.success(res, null, MESSAGES.NO_RECORDS);
     }
 
-    // Step 5: Return successful report
     return ResponseHandler.success(res, reportData, MESSAGES.REPORT_GENERATED);
-
   } catch (error) {
-    // Handle validation errors specifically
     if (error instanceof z.ZodError) {
       const firstIssue = error.issues?.[0];
       return ResponseHandler.error(
@@ -233,7 +204,6 @@ async function generateReport(req, res, next) {
       );
     }
 
-    // Pass other errors to the global error handler
     return next(error);
   }
 }
@@ -245,7 +215,6 @@ async function generateReport(req, res, next) {
 module.exports = {
   getConfig,
   generateReport,
-  // Export for testing purposes
   AuthorizationService,
   ResponseHandler,
 };
