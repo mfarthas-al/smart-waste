@@ -24,6 +24,9 @@ const baseNavLinks = [
 function Nav({ session, onSignOut }) {
   const [menuAnchor, setMenuAnchor] = useState(null)
   const navLinks = baseNavLinks.filter(link => {
+    if (session?.role === 'admin' && link.to === '/schedule') {
+      return false
+    }
     if (link.to === '/analytics') {
       return session?.role === 'admin'
     }
@@ -35,13 +38,6 @@ function Nav({ session, onSignOut }) {
       label: 'Admin Desk',
       description: 'Administration controls',
       icon: ShieldCheck,
-    })
-  } else if (session?.role === 'regular') {
-    navLinks.push({
-      to: '/userDashboard',
-      label: 'Crew Desk',
-      description: 'Your field assignments',
-      icon: UserCircle,
     })
   }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, IconButton, Stack, Tooltip, Typography, } from '@mui/material'
-import { CalendarClock, ChevronLeft, ChevronRight, History, RefreshCcw, Wallet, } from 'lucide-react'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, Drawer, IconButton, Stack, Tooltip, Typography, useMediaQuery, useTheme, } from '@mui/material'
+import { CalendarClock, ChevronLeft, ChevronRight, History, Menu, RefreshCcw, Wallet, X, } from 'lucide-react'
 import BillingPage from '../Billing/BillingPage.jsx'
 
 const dashboardSections = [
@@ -156,64 +156,147 @@ function useSchedulingData(session) {
   }
 }
 
-function DashboardSideNav({ collapsed, onToggle, activeSection, onNavigate }) {
+const NAV_WIDTH_EXPANDED = 280
+const NAV_WIDTH_COLLAPSED = 96
+const NAV_TOP_OFFSET = 104
+
+function NavigationItems({ collapsed, activeSection, onNavigate, onClose, isDesktop }) {
   return (
-    <aside className={`w-full lg:sticky lg:top-28 lg:w-auto ${collapsed ? 'lg:min-w-[5rem]' : 'lg:min-w-[16rem]'}`}>
-      <div className={`glass-panel rounded-3xl border border-slate-200/70 bg-white/90 shadow-md transition-all duration-200 ${collapsed ? 'lg:px-2' : 'lg:px-4'} px-4 py-4`}>
-        <div className="flex items-center justify-between">
-          <Typography variant="subtitle2" fontWeight={600} className="lg:hidden">
-            Sections
-          </Typography>
+    <Stack spacing={1}>
+      {dashboardSections.map(section => {
+        const Icon = section.icon
+        const isActive = activeSection === section.id
+
+        const item = (
+          <button
+            type="button"
+            onClick={() => {
+              onNavigate(section.id)
+              onClose?.()
+            }}
+            className={`group flex w-full items-center gap-3 rounded-2xl border border-transparent px-3 py-3 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+              collapsed ? 'justify-center px-2' : ''
+            } ${
+              isActive
+                ? 'bg-brand-500/20 text-brand-700 shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100/70'
+            }`}
+          >
+            <Icon className="h-4 w-4 shrink-0 text-brand-600" />
+            {!collapsed && (
+              <span className="flex flex-col">
+                <span className="font-semibold">{section.label}</span>
+                <span className="text-xs text-slate-500">{section.description}</span>
+              </span>
+            )}
+          </button>
+        )
+
+        if (!isDesktop) {
+          return (
+            <Box key={section.id}>{item}</Box>
+          )
+        }
+
+        return (
+          <Tooltip
+            key={section.id}
+            title={section.label}
+            placement="right"
+            arrow
+            disableHoverListener={!collapsed}
+            disableFocusListener={!collapsed}
+            disableTouchListener={!collapsed}
+          >
+            <span className="inline-flex w-full">{item}</span>
+          </Tooltip>
+        )
+      })}
+    </Stack>
+  )
+}
+
+function DashboardSideNav({ collapsed, onToggle, activeSection, onNavigate }) {
+  const width = collapsed ? NAV_WIDTH_COLLAPSED : NAV_WIDTH_EXPANDED
+
+  return (
+    <Box
+      sx={{
+        width,
+        flexShrink: 0,
+        transition: 'width 0.25s ease',
+        position: 'sticky',
+        top: NAV_TOP_OFFSET,
+        alignSelf: 'flex-start',
+      }}
+    >
+      <div className="glass-panel flex flex-col gap-4 rounded-3xl border border-slate-200/70 bg-white/95 p-4 shadow-md">
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          {!collapsed && (
+            <Stack spacing={0.5}>
+              <Typography variant="subtitle2" fontWeight={600}>
+                Dashboard sections
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Switch between your key views
+              </Typography>
+            </Stack>
+          )}
           <IconButton
             onClick={onToggle}
             size="small"
-            className="hidden lg:inline-flex"
             aria-label={collapsed ? 'Expand dashboard navigation' : 'Collapse dashboard navigation'}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </IconButton>
-        </div>
-        <Stack
-          direction={{ xs: 'row', lg: 'column' }}
-          spacing={1}
-          mt={collapsed ? 2 : 3}
-          className="overflow-x-auto pb-1 lg:overflow-visible"
-        >
-          {dashboardSections.map(section => {
-            const Icon = section.icon
-            const isActive = activeSection === section.id
-            return (
-              <Tooltip
-                key={section.id}
-                title={section.label}
-                placement="right"
-                arrow
-                disableHoverListener={!collapsed}
-                disableFocusListener={!collapsed}
-                disableTouchListener={!collapsed}
-              >
-                <span className="inline-flex">
-                  <button
-                    type="button"
-                    onClick={() => onNavigate(section.id)}
-                    className={`flex min-w-[3rem] items-center gap-3 rounded-2xl border border-transparent px-3 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white lg:w-full ${collapsed ? 'lg:justify-center lg:px-2' : ''
-                      } ${isActive
-                        ? 'bg-brand-500/15 text-brand-700 shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-100/70'
-                      }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className={`${collapsed ? 'lg:hidden' : ''} whitespace-nowrap`}>
-                      {section.label}
-                    </span>
-                  </button>
-                </span>
-              </Tooltip>
-            )
-          })}
         </Stack>
+
+        <NavigationItems
+          collapsed={collapsed}
+          activeSection={activeSection}
+          onNavigate={onNavigate}
+          isDesktop
+        />
       </div>
-    </aside>
+    </Box>
+  )
+}
+
+function MobileNavigationDrawer({ open, onClose, activeSection, onNavigate }) {
+  return (
+    <Drawer
+      anchor="left"
+      open={open}
+      onClose={onClose}
+      PaperProps={{
+        sx: {
+          width: { xs: '85vw', sm: 360 },
+          borderRadius: '0 24px 24px 0',
+          borderRight: '1px solid rgba(148, 163, 184, 0.35)',
+          bgcolor: 'rgba(255,255,255,0.92)',
+          backdropFilter: 'blur(14px)',
+        },
+      }}
+    >
+      <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, height: '100%' }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Typography variant="subtitle1" fontWeight={600}>
+            Dashboard sections
+          </Typography>
+          <IconButton onClick={onClose} size="small" aria-label="Close navigation">
+            <X className="h-4 w-4" />
+          </IconButton>
+        </Stack>
+
+        <NavigationItems
+          collapsed={false}
+          activeSection={activeSection}
+          onNavigate={onNavigate}
+          onClose={onClose}
+          isDesktop={false}
+        />
+      </Box>
+    </Drawer>
   )
 }
 
@@ -523,10 +606,10 @@ function HistorySection({ history, itemLabelMap, loading, onRefresh }) {
 }
 
 export default function UserDashboard({ session = null }) {
-  const [navCollapsed, setNavCollapsed] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.innerWidth < 1024
-  })
+  const theme = useTheme()
+  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'))
+  const [navCollapsed, setNavCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('billing')
 
   const { requests, itemLabelMap, loading, error, refresh } = useSchedulingData(session)
@@ -556,8 +639,22 @@ export default function UserDashboard({ session = null }) {
     return { upcoming: upcomingRequests, history: historyRequests }
   }, [requests])
 
+  useEffect(() => {
+    if (isDesktop) {
+      setMobileNavOpen(false)
+    }
+  }, [isDesktop])
+
   const handleToggleNav = useCallback(() => {
     setNavCollapsed(prev => !prev)
+  }, [])
+
+  const handleOpenMobileNav = useCallback(() => {
+    setMobileNavOpen(true)
+  }, [])
+
+  const handleCloseMobileNav = useCallback(() => {
+    setMobileNavOpen(false)
   }, [])
 
   const handleNavigate = useCallback(sectionId => {
@@ -598,33 +695,89 @@ export default function UserDashboard({ session = null }) {
   }, [activeSection])
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10 lg:flex-row">
-      <DashboardSideNav
-        collapsed={navCollapsed}
-        onToggle={handleToggleNav}
+    <Box
+      component="main"
+      sx={{
+        bgcolor: 'rgba(248, 250, 252, 0.85)',
+        minHeight: '100vh',
+        py: { xs: 6, md: 8 },
+      }}
+    >
+      <Box
+        sx={{
+          mx: 'auto',
+          width: '100%',
+          maxWidth: 1240,
+          px: { xs: 2, sm: 3, md: 4 },
+        }}
+      >
+        <Stack
+          direction={{ xs: 'column', lg: 'row' }}
+          spacing={{ xs: 4, lg: 6 }}
+          alignItems="flex-start"
+        >
+          {isDesktop && (
+            <DashboardSideNav
+              collapsed={navCollapsed}
+              onToggle={handleToggleNav}
+              activeSection={activeSection}
+              onNavigate={handleNavigate}
+            />
+          )}
+
+          <Box sx={{ flexGrow: 1, width: '100%' }}>
+            {!isDesktop && (
+              <Box
+                className="glass-panel"
+                sx={{
+                  mb: 3,
+                  borderRadius: '28px',
+                  border: '1px solid rgba(148,163,184,0.35)',
+                  backgroundColor: 'rgba(255,255,255,0.94)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  px: 3,
+                  py: 2.5,
+                  boxShadow: '0px 24px 48px -28px rgba(15,23,42,0.35)',
+                }}
+              >
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Dashboard sections
+                </Typography>
+                <IconButton onClick={handleOpenMobileNav} size="small" aria-label="Open navigation menu">
+                  <Menu className="h-5 w-5" />
+                </IconButton>
+              </Box>
+            )}
+
+            <Stack spacing={4}>
+              <Box className="glass-panel rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
+                <Stack spacing={1.5}>
+                  <Typography variant="overline" color="text.secondary" fontWeight={600}>
+                    User dashboard
+                  </Typography>
+                  <Typography variant="h4" fontWeight={600}>
+                    {session?.name ? `Welcome back, ${session.name}` : 'Welcome to your dashboard'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Use the navigation to move between billing, upcoming pickups, and your scheduling history.
+                  </Typography>
+                </Stack>
+              </Box>
+
+              <ActiveSectionComponent {...sectionProps[activeSection]} />
+            </Stack>
+          </Box>
+        </Stack>
+      </Box>
+
+      <MobileNavigationDrawer
+        open={mobileNavOpen}
+        onClose={handleCloseMobileNav}
         activeSection={activeSection}
         onNavigate={handleNavigate}
       />
-
-      <div className="flex-1 space-y-8">
-        <section>
-          <div className="glass-panel rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
-            <Stack spacing={1.5}>
-              <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                Crew dashboard
-              </Typography>
-              <Typography variant="h4" fontWeight={600}>
-                {session?.name ? `Welcome back, ${session.name}` : 'Welcome to your dashboard'}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Use the sidebar to switch between billing, upcoming pickups, and your scheduling history.
-              </Typography>
-            </Stack>
-          </div>
-        </section>
-
-        <ActiveSectionComponent {...sectionProps[activeSection]} />
-      </div>
-    </div>
+    </Box>
   )
 }

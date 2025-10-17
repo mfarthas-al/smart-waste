@@ -29,85 +29,127 @@ const estimateKg = bin => {
   return Math.min(capacity, estimated)
 }
 
-function optimize({
-  bins = [],
-  depot = lk.operations.default_depot,
-  capacityKg = lk.operations.truck_capacity_kg,
-  threshold = lk.operations.route_threshold,
-} = {}) {
-  const truckCapacity = Number(capacityKg) || 0
-  const fillThreshold = Number(threshold) || 0
+const buildPlans = ({ candidates, depot, truckCapacity, trucks, maxDistanceKm }) => {
+  const plans = []
+  const remaining = [...candidates]
   const tieTolerance = 1e-6
 
-  const candidates = bins
+  while (remaining.length && plans.length < trucks) {
+    let currentLocation = depot
+    let currentLoad = 0
+    let travelled = 0
+    const stops = []
+
+    while (remaining.length) {
+      let chosenIndex = 0
+      let bestDistance = Number.POSITIVE_INFINITY
+
+      for (let i = 0; i < remaining.length; i += 1) {
+        const candidate = remaining[i]
+        const distance = haversineKm(currentLocation, candidate.location)
+
+        if (
+          distance < bestDistance ||
+          (Math.abs(distance - bestDistance) <= tieTolerance &&
+            String(candidate.binId).localeCompare(String(remaining[chosenIndex].binId)) < 0)
+        ) {
+          bestDistance = distance
+          chosenIndex = i
+        }
+      }
+
+      const nextStop = remaining[chosenIndex]
+      if (truckCapacity && (currentLoad + nextStop.estKg) > truckCapacity) {
+        break
+      }
+
+      const projectedTravel = travelled + haversineKm(currentLocation, nextStop.location)
+      const loopBackDistance = haversineKm(nextStop.location, depot)
+      const projectedTotal = projectedTravel + loopBackDistance
+
+      if (maxDistanceKm && projectedTotal > maxDistanceKm) {
+        break
+      }
+
+      remaining.splice(chosenIndex, 1)
+      stops.push({
+        binId: nextStop.binId,
+        lat: nextStop.location.lat,
+        lon: nextStop.location.lon,
+        estKg: Math.round(nextStop.estKg),
+        visited: Boolean(nextStop.visited),
+      })
+      currentLoad += nextStop.estKg
+      travelled = projectedTravel
+      currentLocation = nextStop.location
+    }
+
+    if (stops.length) {
+      travelled += haversineKm(currentLocation, depot)
+      plans.push({
+        stops,
+        loadKg: Math.round(currentLoad),
+        distanceKm: Number(travelled.toFixed(2)),
+      })
+    } else {
+      break
+    }
+  }
+
+  if (!plans.length) {
+    plans.push({ stops: [], loadKg: 0, distanceKm: 0 })
+  }
+
+  return plans
+}
+
+const toCandidates = ({ bins, depot, threshold, truckCapacity }) => {
+  return bins
     .filter(bin => bin && bin.location && typeof bin.location.lat === 'number' && typeof bin.location.lon === 'number')
     .map(bin => ({ ...bin, estKg: estimateKg(bin) }))
     .filter(bin => {
       const capacity = Number(bin.capacityKg) || 0
       if (truckCapacity <= 0 || capacity <= 0) return false
-      return (bin.estKg / capacity) >= fillThreshold
+      return (bin.estKg / capacity) >= threshold
     })
+    .sort((a, b) => {
+      const da = haversineKm(depot, a.location)
+      const db = haversineKm(depot, b.location)
+      if (da === db) return String(a.binId).localeCompare(String(b.binId))
+      return da - db
+    })
+}
 
-  if (!candidates.length) {
-    return { stops: [], loadKg: 0, distanceKm: 0 }
-  }
+function optimize(options = {}) {
+  if (options && options.params) {
+    const { bins = [], params = {} } = options
+    const depot = params.depot || lk.operations.default_depot
+    const truckCapacity = Number(params.truckCapacityKg || lk.operations.truck_capacity_kg || 0)
+    const threshold = Number(params.threshold ?? lk.operations.route_threshold ?? 0.2)
+    const trucks = Math.max(1, Number(params.trucks || 1))
+    const maxTimeHrs = Number(params.maxTimeHrs || 0)
+    const avgSpeedKph = Number(params.avgSpeedKph || 25)
+    const maxDistanceKm = maxTimeHrs > 0 ? maxTimeHrs * avgSpeedKph : 0
 
-  const remaining = [...candidates]
-  const orderedStops = []
-  let current = depot
-  let totalLoad = 0
-
-  while (remaining.length) {
-    let chosenIndex = 0
-    let bestDistance = Number.POSITIVE_INFINITY
-
-    for (let i = 0; i < remaining.length; i += 1) {
-      const candidate = remaining[i]
-      const distance = haversineKm(current, candidate.location)
-
-      if (
-        distance < bestDistance ||
-        (Math.abs(distance - bestDistance) <= tieTolerance &&
-          String(candidate.binId).localeCompare(String(remaining[chosenIndex].binId)) < 0)
-      ) {
-        bestDistance = distance
-        chosenIndex = i
-      }
+    const candidates = toCandidates({ bins, depot, threshold, truckCapacity })
+    if (!candidates.length) {
+      return [{ stops: [], loadKg: 0, distanceKm: 0 }]
     }
 
-    const nextStop = remaining.splice(chosenIndex, 1)[0]
-    if (truckCapacity && (totalLoad + nextStop.estKg) > truckCapacity) {
-      break
-    }
-
-    orderedStops.push({
-      binId: nextStop.binId,
-      lat: nextStop.location.lat,
-      lon: nextStop.location.lon,
-      estKg: Math.round(nextStop.estKg),
-      visited: Boolean(nextStop.visited),
-    })
-    totalLoad += nextStop.estKg
-    current = nextStop.location
+    return buildPlans({ candidates, depot, truckCapacity, trucks, maxDistanceKm })
   }
 
-  if (!orderedStops.length) {
-    return { stops: [], loadKg: 0, distanceKm: 0 }
-  }
+  const {
+    bins = [],
+    depot = lk.operations.default_depot,
+    capacityKg = lk.operations.truck_capacity_kg,
+    threshold = lk.operations.route_threshold,
+  } = options
 
-  let travelled = 0
-  current = depot
-  for (const stop of orderedStops) {
-    travelled += haversineKm(current, stop)
-    current = stop
-  }
-  travelled += haversineKm(current, depot)
-
-  return {
-    stops: orderedStops,
-    loadKg: Math.round(totalLoad),
-    distanceKm: Number(travelled.toFixed(2)),
-  }
+  const truckCapacity = Number(capacityKg) || 0
+  const candidates = toCandidates({ bins, depot, threshold: Number(threshold) || 0, truckCapacity })
+  const plans = buildPlans({ candidates, depot, truckCapacity, trucks: 1 })
+  return plans[0]
 }
 
 module.exports = { estimateKg, optimize }
