@@ -13,6 +13,11 @@ const { generateSpecialCollectionReceipt } = require('./receipt');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
+const resolveFirstZodMessage = error => {
+  const issues = Array.isArray(error?.errors) ? error.errors : error?.issues;
+  return issues?.[0]?.message || 'Invalid request payload.';
+};
+
 const allowedItems = [
   {
     id: 'furniture',
@@ -583,7 +588,7 @@ async function checkAvailability(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return res.status(400).json({ ok: false, message: resolveFirstZodMessage(error) });
     }
     if (error.code === 'USER_NOT_FOUND') {
       return res.status(404).json({ ok: false, message: error.message });
@@ -664,7 +669,7 @@ async function confirmBooking(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return res.status(400).json({ ok: false, message: resolveFirstZodMessage(error) });
     }
     if (error.code === 'USER_NOT_FOUND') {
       return res.status(404).json({ ok: false, message: error.message });
@@ -795,7 +800,7 @@ async function startCheckout(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return res.status(400).json({ ok: false, message: resolveFirstZodMessage(error) });
     }
     if (error.code === 'USER_NOT_FOUND') {
       return res.status(404).json({ ok: false, message: error.message });
@@ -946,7 +951,7 @@ async function syncCheckout(req, res, next) {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return res.status(400).json({ ok: false, message: resolveFirstZodMessage(error) });
     }
     if (error.code === 'USER_NOT_FOUND') {
       return res.status(404).json({ ok: false, message: error.message });
@@ -976,7 +981,7 @@ async function listUserRequests(req, res, next) {
     return res.json({ ok: true, requests });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0].message });
+      return res.status(400).json({ ok: false, message: resolveFirstZodMessage(error) });
     }
     if (error.code === 'USER_NOT_FOUND') {
       return res.status(404).json({ ok: false, message: error.message });
@@ -1015,7 +1020,7 @@ async function downloadReceipt(req, res, next) {
     return res.send(buffer);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ ok: false, message: error.errors[0]?.message || 'Invalid request' });
+      return res.status(400).json({ ok: false, message: resolveFirstZodMessage(error) });
     }
     return next(error);
   }
