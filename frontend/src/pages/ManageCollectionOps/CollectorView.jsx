@@ -22,6 +22,7 @@ export default function CollectorView() {
         if (!isMounted) return
         setStops(payload?.stops || [])
       } catch (error) {
+        console.error('loadCollectorRoute error', error)
         if (!isMounted) return
         setBanner({ tone: 'error', message: 'Unable to load today’s route. Pull to refresh or try again shortly.' })
       } finally {
@@ -48,6 +49,7 @@ export default function CollectorView() {
       setStops(prev => prev.map(s => s.binId === binId ? { ...s, visited: true } : s))
       setBanner({ tone: 'success', message: `${binId} recorded as collected.` })
     } catch (error) {
+      console.error('markCollected error', error)
       setBanner({ tone: 'error', message: 'Unexpected error. Please retry.' })
     } finally {
       setPendingBin('')

@@ -5,24 +5,29 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests",
+    "lint": "eslint \"src/**/*.{js,jsx}\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "bcryptjs": "^2.4.3",
     "express": "^5.1.0",
     "mongoose": "^8.18.2",
     "morgan": "^1.10.1",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.15",
     "stripe": "^14.25.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "eslint": "^9.36.0",
+    "globals": "^16.4.0",
     "jest": "^30.2.0",
     "nodemon": "^3.1.10",
     "supertest": "^7.1.4"

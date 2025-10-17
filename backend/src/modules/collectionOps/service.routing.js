@@ -15,6 +15,11 @@ const haversineKm = (from, to) => {
   return EARTH_RADIUS_KM * c
 }
 
+/**
+ * Estimate the current load within a bin using its nominal capacity and fill rate.
+ * @param {{ capacityKg?: number, estRateKgPerDay?: number, lastPickupAt?: Date|string|null }} bin - Bin telemetry record.
+ * @returns {number} Estimated kilograms ready for collection, capped by capacity.
+ */
 const estimateKg = bin => {
   if (!bin) return 0
   const capacity = Number(bin.capacityKg) || 0

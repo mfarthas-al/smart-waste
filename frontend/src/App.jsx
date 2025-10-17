@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Routes, Route, Navigate } from 'react-router-dom'
 import { CssBaseline, Chip, Tooltip, ThemeProvider, createTheme, Avatar, IconButton, Menu, MenuItem, ListItemIcon, Divider } from '@mui/material'
-import { MapPinned, ClipboardCheck, Truck, CalendarClock, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
+import { MapPinned, Truck, CalendarClock, BarChart3, Sparkles, Gauge, CheckCircle2, AlertTriangle, ArrowUpRight, LogIn, ShieldCheck, UserCircle, UserPlus, LogOut, UserRound } from 'lucide-react'
 import './App.css'
 import ManageCollectionOpsPage from './pages/ManageCollectionOps/ManageCollectionOpsPage.jsx'
-import CollectorView from './pages/ManageCollectionOps/CollectorView.jsx'
 import LoginPage from './pages/Auth/LoginPage.jsx'
 import RegisterPage from './pages/Auth/RegisterPage.jsx'
 import UserDashboard from './pages/Dashboards/UserDashboard.jsx'
@@ -16,7 +15,6 @@ import SpecialCollectionCheckoutResult from './pages/Schedule/SpecialCollectionC
 
 const baseNavLinks = [
   { to: '/ops', label: 'Collection Ops', description: 'Plan and monitor routes', icon: MapPinned },
-  { to: '/collector', label: 'Collector', description: 'Daily stop checklist', icon: ClipboardCheck },
   { to: '/schedule', label: 'Schedule', description: 'Pickup calendar', icon: CalendarClock },
   { to: '/analytics', label: 'Analytics', description: 'Performance dashboards', icon: BarChart3 },
 ]
@@ -265,7 +263,7 @@ function Home() {
       accent: "from-brand-400/30 via-brand-400/10 to-transparent",
     },
     {
-      to: "/collector",
+      to: "/ops#collector-checklist",
       headline: "Coordinate field teams",
       copy: "Live progress and digital checklists for crews.",
       icon: Truck,
@@ -304,7 +302,7 @@ function Home() {
               <ArrowUpRight className="h-4 w-4" />
             </Link>
             <Link
-              to="/collector"
+              to="/ops#collector-checklist"
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700"
             >
               View collector route
@@ -489,7 +487,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/ops" element={<ManageCollectionOpsPage />} />
-            <Route path="/collector" element={<CollectorView />} />
+            <Route path="/collector" element={<Navigate to="/ops#collector-checklist" replace />} />
             <Route
               path="/schedule"
               element={sessionUser ? <SpecialCollectionPage session={sessionUser} onSessionInvalid={handleSessionInvalid} /> : <Navigate to="/login" replace />}
@@ -535,7 +533,7 @@ export default function App() {
               <Link to="/ops" className="hover:text-slate-700">
                 Operations Control
               </Link>
-              <Link to="/collector" className="hover:text-slate-700">
+              <Link to="/ops#collector-checklist" className="hover:text-slate-700">
                 Field Crew
               </Link>
               <Link to="/analytics" className="hover:text-slate-700">
