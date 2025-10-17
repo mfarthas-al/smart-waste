@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Grid, Stack, Typography } from '@mui/material'
-import { CheckCircle2, Download, RotateCcw, XCircle } from 'lucide-react'
+import { Alert, Box, Button, CircularProgress, Stack, Typography } from '@mui/material'
+import { RotateCcw, XCircle } from 'lucide-react'
 import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
+import ConfirmationIllustration from '../../assets/Confirmation.png'
+import SpecialCollectionPaymentSuccessCard from '../../components/SpecialCollectionPaymentSuccessCard.jsx'
 
 function ResultStatus({ status }) {
   if (status === 'success') {
-    return (
-      <Alert severity="success" icon={<CheckCircle2 className="h-5 w-5" />}>
-        Payment successful. Your bill has been marked as paid.
-      </Alert>
-    )
+    return null
   }
   if (status === 'cancelled') {
     return (
@@ -46,8 +44,8 @@ export default function CheckoutResultPage({ session }) {
   const [amount, setAmount] = useState(null)
   const [currency, setCurrency] = useState('lkr')
   const [bill, setBill] = useState(null)
-  const [transaction, setTransaction] = useState(null)
   const [requestDetails, setRequestDetails] = useState(null)
+  const [downloadPending, setDownloadPending] = useState(false)
 
   useEffect(() => {
     if (!session) {
@@ -76,8 +74,7 @@ export default function CheckoutResultPage({ session }) {
         setReceiptUrl(payload.data?.receiptUrl || payload.data?.transaction?.receiptUrl || null)
         setAmount(typeof amountTotal === 'number' ? amountTotal / 100 : payload.data?.bill?.amount ?? null)
         setCurrency(currencyCode)
-        setBill(payload.data?.bill || null)
-        setTransaction(payload.data?.transaction || null)
+  setBill(payload.data?.bill || null)
         setRequestDetails(payload.data?.request || null)
       } catch (err) {
         setError(err.message)
@@ -93,203 +90,155 @@ export default function CheckoutResultPage({ session }) {
     navigate('/billing', { replace: true })
   }
 
-  const formatCurrency = (value, code = 'lkr') => {
-    if (value === null || value === undefined) return null
-    const numberValue = Number(value)
-    if (!Number.isFinite(numberValue)) return null
+  const goToDashboard = () => {
+    if (session?.role === 'admin') {
+      navigate('/adminDashboard', { replace: true })
+    } else {
+      navigate('/userDashboard', { replace: true })
+    }
+  }
+
+  const handleDownloadReceipt = async () => {
+    const request = requestDetails
+    if (!request) {
+      if (receiptUrl) {
+        window.open(receiptUrl, '_blank', 'noopener,noreferrer')
+      }
+      return
+    }
+
+    const requestId = request._id || request.id
+    const userId = session?.id || session?._id || request.userId
+
+    if (!requestId || !userId) {
+      window.alert('We could not verify your session. Please sign in again to download the receipt.')
+      return
+    }
+
     try {
-      return numberValue.toLocaleString('en-LK', {
-        style: 'currency',
-        currency: code?.toUpperCase() || 'LKR',
-        minimumFractionDigits: 2,
+      setDownloadPending(true)
+      const response = await fetch(`/api/schedules/special/requests/${requestId}/receipt?userId=${encodeURIComponent(userId)}`, {
+        headers: {
+          Accept: 'application/pdf',
+        },
       })
+
+      if (!response.ok) {
+        let message = 'Could not download the receipt. Please try again.'
+        try {
+          const payload = await response.json()
+          if (payload?.message) {
+            message = payload.message
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse receipt error payload', parseError)
+        }
+        throw new Error(message)
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `special-collection-receipt-${requestId}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(url)
     } catch (err) {
-      console.warn('Failed to format currency', err)
-      return `${code?.toUpperCase() || 'LKR'} ${numberValue.toFixed(2)}`
+      console.error('Receipt download failed', err)
+      if (receiptUrl) {
+        window.open(receiptUrl, '_blank', 'noopener,noreferrer')
+      } else {
+        window.alert(err.message || 'Could not download the receipt. Please try again later.')
+      }
+    } finally {
+      setDownloadPending(false)
     }
   }
 
-  const formatDate = date => {
-    if (!date) return '—'
-    try {
-      return new Date(date).toLocaleDateString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    } catch {
-      return '—'
-    }
+  const dashboardPath = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
+  const fallbackCurrency = (requestDetails?.paymentCurrency || requestDetails?.currency || bill?.currency || currency || 'LKR').toUpperCase()
+
+  const mergedRequest = requestDetails
+    ? {
+        ...requestDetails,
+        paymentCurrency: requestDetails.paymentCurrency || requestDetails.currency || fallbackCurrency,
+      }
+    : null
+
+  const paymentDetails = {
+    total: requestDetails?.paymentAmount ?? bill?.amount ?? amount ?? 0,
+    subtotal: requestDetails?.paymentSubtotal ?? bill?.amount ?? amount ?? 0,
+    extraCharge: requestDetails?.paymentWeightCharge ?? 0,
+    tax: requestDetails?.paymentTaxCharge ?? 0,
+    currency: fallbackCurrency,
   }
 
-  const formatDateTime = date => {
-    if (!date) return '—'
-    try {
-      return new Date(date).toLocaleString('en-GB', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    } catch {
-      return '—'
-    }
-  }
+  const isSuccess = status === 'success'
 
-  const formatSlotWindow = slot => {
-    if (!slot?.start) return '—'
-    const start = new Date(slot.start)
-    const end = slot.end ? new Date(slot.end) : null
-    const datePart = start.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    })
-    const startTime = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-    const endTime = end ? end.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null
-    return endTime ? `${datePart} • ${startTime} – ${endTime}` : `${datePart} • ${startTime}`
-  }
-
-  const handleDownloadReceipt = () => {
-    if (!receiptUrl) return
-    window.open(receiptUrl, '_blank', 'noopener,noreferrer')
-  }
-
-  const formattedAmount = formatCurrency(amount, currency)
-  const invoiceNumber = bill?.invoiceNumber || transaction?.id || transaction?.paymentIntentId
-  const scheduledWindow = requestDetails?.slot ? formatSlotWindow(requestDetails.slot) : null
-
-  function DetailRow({ label, value }) {
-    if (value === null || value === undefined || value === '') return null
-    return (
-      <Stack spacing={0.25}>
-        <Typography variant="caption" color="text.secondary">
-          {label}
-        </Typography>
-        <Typography variant="body2" fontWeight={600} color="text.primary">
-          {value}
-        </Typography>
-      </Stack>
-    )
-  }
+  const successActions = [
+    { label: 'Go to Billing', variant: 'contained', onClick: handleReturn },
+    { label: 'View Dashboard', variant: 'outlined', onClick: goToDashboard },
+  ]
 
   return (
-    <div className="mx-auto max-w-3xl px-6">
-      <Stack spacing={4} className="glass-panel my-10 rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
-        <Typography variant="h4" fontWeight={600}>
-          Stripe Checkout summary
-        </Typography>
-
-        {loading ? (
-          <Box display="flex" justifyContent="center" py={8}>
-            <CircularProgress />
-          </Box>
-        ) : error ? (
-          <Alert severity="error" onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        ) : (
-          <Stack spacing={3}>
-            <ResultStatus status={status} />
-            {status === 'success' && bill ? (
-              <Card sx={{ borderRadius: '28px', borderColor: 'rgba(148,163,184,0.35)' }}>
-                <CardContent>
-                  <Stack spacing={3}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
-                      <Box sx={{ width: 68, height: 68, borderRadius: '50%', border: theme => `8px solid ${theme.palette.success.main}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <CheckCircle2 size={32} color="#047857" />
-                      </Box>
-                      <Stack spacing={0.5}>
-                        <Typography variant="h5" fontWeight={700} color="success.main">
-                          Payment confirmed
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          We have updated your bill and scheduled pickup. Save the receipt for your records.
-                        </Typography>
-                      </Stack>
-                    </Stack>
-
-                    <Grid container spacing={3}>
-                      <Grid item xs={12} md={6}>
-                        <DetailRow label="Invoice number" value={invoiceNumber} />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <DetailRow label="Paid on" value={formatDateTime(transaction?.paidAt || bill?.paidAt)} />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <DetailRow label="Payment method" value={transaction?.paymentMethod ? transaction.paymentMethod.replace(/_/g, ' ').toUpperCase() : null} />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <DetailRow label="Amount" value={formattedAmount || formatCurrency(bill.amount, bill.currency)} />
-                      </Grid>
-                      <Grid item xs={12} md={6}>
-                        <DetailRow label="Due date" value={formatDate(bill.dueDate)} />
-                      </Grid>
-                    </Grid>
-
-                    {requestDetails ? (
-                      <>
-                        <Divider textAlign="left">Special collection details</Divider>
-                        <Grid container spacing={3}>
-                          <Grid item xs={12}>
-                            <DetailRow label="Service address" value={requestDetails.address} />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DetailRow label="District" value={requestDetails.district} />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DetailRow label="Contact" value={requestDetails.contactPhone} />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DetailRow label="Item" value={requestDetails.itemLabel || requestDetails.itemType} />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DetailRow label="Quantity" value={requestDetails.quantity ? String(requestDetails.quantity) : null} />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DetailRow label="Scheduled slot" value={scheduledWindow} />
-                          </Grid>
-                          <Grid item xs={12} sm={6}>
-                            <DetailRow label="Approx. weight" value={requestDetails.totalWeightKg ? `${requestDetails.totalWeightKg.toFixed(1)} kg` : requestDetails.approxWeightKg ? `${requestDetails.approxWeightKg.toFixed(1)} kg` : null} />
-                          </Grid>
-                        </Grid>
-                      </>
-                    ) : null}
-
-                    {receiptUrl ? (
-                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                        <Button variant="contained" startIcon={<Download size={18} />} onClick={handleDownloadReceipt}>
-                          Download receipt
-                        </Button>
-                        <Button variant="text" component="a" href={receiptUrl} target="_blank" rel="noopener">
-                          View Stripe receipt
-                        </Button>
-                      </Stack>
-                    ) : null}
-                  </Stack>
-                </CardContent>
-              </Card>
-            ) : (
-              amount != null && (
-                <Typography variant="body2" color="text.secondary">
-                  Checkout total: {formattedAmount || formatCurrency(amount, currency)}
-                </Typography>
-              )
-            )}
-          </Stack>
-        )}
-
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <Button variant="contained" onClick={handleReturn}>
-            Back to My Bills
-          </Button>
-          <Button component={RouterLink} to="/billing" variant="outlined">
-            Billing overview
-          </Button>
+    <div className="mx-auto flex flex-col gap-4 px-4 py-6 md:px-6 md:py-10" style={{ maxWidth: '1100px' }}>
+      {!isSuccess && (
+        <Stack spacing={2.5}>
+          <Typography variant="h4" fontWeight={600}>
+            Bill payment
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Review the payment outcome for your outstanding special collection invoice.
+          </Typography>
         </Stack>
-      </Stack>
+      )}
+
+      {loading ? (
+        <Box display="flex" justifyContent="center" py={8}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Stack spacing={4}>
+          {error && (
+            <Alert severity="error" onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+
+          {isSuccess ? (
+            mergedRequest ? (
+              <SpecialCollectionPaymentSuccessCard
+                request={mergedRequest}
+                payment={paymentDetails}
+                onDownloadReceipt={handleDownloadReceipt}
+                downloadPending={downloadPending}
+                stripeReceiptUrl={receiptUrl}
+                illustrationSrc={ConfirmationIllustration}
+                actions={successActions}
+              />
+            ) : (
+              <Alert severity="info">
+                Payment confirmed, but the linked special collection request could not be found.
+              </Alert>
+            )
+          ) : (
+            <ResultStatus status={status} />
+          )}
+
+          {!isSuccess && (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <Button variant="contained" onClick={handleReturn}>
+                Back to My Bills
+              </Button>
+              <Button component={RouterLink} to={dashboardPath} variant="outlined">
+                View dashboard
+              </Button>
+            </Stack>
+          )}
+        </Stack>
+      )}
     </div>
   )
 }
