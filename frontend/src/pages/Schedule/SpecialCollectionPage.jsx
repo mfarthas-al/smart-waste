@@ -6,7 +6,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar'
 import { DigitalClock } from '@mui/x-date-pickers/DigitalClock'
-import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck } from 'lucide-react'
+import { CalendarClock, Check, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import ConfirmationIllustration from '../../assets/Confirmation.png'
 
@@ -816,31 +816,26 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
         <Grid container spacing={3} alignItems="stretch">
           <Grid item xs={12} md={7} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {/* Centered header: icon + title (mirrors checkout result) */}
-            <Box
-              sx={{
+
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 1.5,
+              mb: 1
+            }}>
+              <Box sx={{
+                width: { xs: 40, sm: 52 },
+                height: { xs: 40, sm: 52 },
+                borderRadius: '50%',
+                border: '6px solid',
+                borderColor: 'success.main',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: { xs: 1.5, sm: 2 },
-                mb: 1,
-                flexDirection: { xs: 'column', sm: 'row' },
-                textAlign: 'center',
-              }}
-            >
-              <Box
-                sx={{
-                  width: { xs: 48, sm: 64 },
-                  height: { xs: 48, sm: 64 },
-                  borderRadius: '50%',
-                  border: '8px solid',
-                  borderColor: statusColor,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  bgcolor: statusBgColor,
-                }}
-              >
-                {headingIcon}
+                bgcolor: 'success.50'
+              }}>
+                <Check size={22} color="#097969" strokeWidth={3} />
               </Box>
               <Typography
                 variant="h4"
@@ -944,17 +939,14 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
               </Stack>
             </Box>
 
-            <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
-              <Button variant="outlined" onClick={onBack}>Back</Button>
-              <Button variant="contained" color="success" onClick={onEdit}>Edit Details</Button>
-            </Stack>
+            
           </Grid>
-          <Grid item xs={12} md={5}>
-            <Box sx={{ width: '100%', height: '100%', minHeight: 360, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Grid item xs={12} md={5} sx={{ display: 'flex' }}>
+            <Box sx={{ flex: 1, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'grey.50', p: 2, minHeight: { xs: 300, md: 'auto' } }}>
               <img 
                 src={ConfirmationIllustration} 
                 alt="Confirmation Illustration" 
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               />
             </Box>
           </Grid>
