@@ -692,7 +692,7 @@ export default function ManageCollectionOpsPage() {
               onClick={handleExportReport}
               variant="contained"
               startIcon={<FileDown className="h-4 w-4" />}
-              disabled={!plan || needsConfirmation}
+              disabled={!plan}
               sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600, paddingInline: '1.35rem' }}
             >
               Export report

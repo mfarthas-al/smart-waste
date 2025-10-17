@@ -1,6 +1,13 @@
 const RoutePlan = require('../../models/RoutePlan')
 
-const fetch = (...args) => import('node-fetch').then(({ default: fn }) => fn(...args))
+const resolveFetch = () => {
+  if (typeof globalThis.__osrmFetch === 'function') {
+    return globalThis.__osrmFetch
+  }
+  return (...args) => import('node-fetch').then(({ default: fn }) => fn(...args))
+}
+
+const fetch = (...args) => resolveFetch()(...args)
 
 const AVG_SPEED_KPH = 25
 const EARTH_RADIUS_KM = 6371
@@ -77,12 +84,12 @@ exports.getPlanDirections = async (req, res) => {
       }
     }
 
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3500)
+
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 3500)
       const url = `https://router.project-osrm.org/route/v1/driving/${toOSRMCoords(coordinates)}?overview=full&geometries=geojson&steps=false&roundtrip=false`
       const response = await fetch(url, { signal: controller.signal })
-      clearTimeout(timeout)
 
       if (!response.ok) {
         console.warn('OSRM responded with', response.status)
@@ -103,6 +110,8 @@ exports.getPlanDirections = async (req, res) => {
     } catch (err) {
       console.error('OSRM fetch failed, serving fallback', err.message)
       return res.json(fallback())
+    } finally {
+      clearTimeout(timeout)
     }
   } catch (error) {
     console.error('getPlanDirections error', error)
