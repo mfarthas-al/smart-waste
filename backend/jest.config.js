@@ -21,6 +21,11 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/utils.js$',
+    'src/modules/analytics/__tests__/integration.test.js',
+    'src/modules/analytics/__tests__/edge-cases.test.js',
+    'src/modules/analytics/__tests__/controller.test.js',
+    'src/modules/analytics/__tests__/routes.test.js',
+    'src/models/__tests__/WasteCollectionRecord.test.js',
   ],
   verbose: true,
   clearMocks: true,

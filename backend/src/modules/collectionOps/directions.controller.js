@@ -4,11 +4,12 @@ const RoutePlan = require('../../models/RoutePlan');
 let cachedFetch = null;
 // Delay loading node-fetch until needed to keep cold starts fast.
 const getFetch = async () => {
-  if (!cachedFetch) {
-    cachedFetch = (await import('node-fetch')).default;
-  }
+  if (cachedFetch) return cachedFetch;
+  cachedFetch = (await import('node-fetch')).default;
   return cachedFetch;
 };
+// Test hook to inject a mocked fetch implementation
+exports.__setFetchForTest = (fn) => { cachedFetch = fn; };
 
 const respondWithError = (res, status, message) => res.status(status).json({ error: message });
 
@@ -20,7 +21,8 @@ const paramsSchema = z.object({ truckId: z.string().min(1) });
 exports.getPlanDirections = async (req, res) => {
   const parsedParams = paramsSchema.safeParse(req.params);
   if (!parsedParams.success) {
-    return respondWithError(res, 400, parsedParams.error.errors[0].message);
+    const message = parsedParams.error?.issues?.[0]?.message || 'Invalid request';
+    return respondWithError(res, 400, message);
   }
 
   try {
@@ -31,6 +33,11 @@ exports.getPlanDirections = async (req, res) => {
     }
 
     const depot = plan.depot || { lat: 6.927, lon: 79.861 };
+    const isValidCoord = (pair) => {
+      const [lat, lon] = pair || [];
+      return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+    };
+
     const coordinates = [
       [depot.lat, depot.lon],
       ...plan.stops
