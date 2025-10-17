@@ -2,6 +2,7 @@ const { z } = require('zod');
 const Stripe = require('stripe');
 const Bill = require('../../models/Bill');
 const PaymentTransaction = require('../../models/PaymentTransaction');
+const SpecialCollectionRequest = require('../../models/SpecialCollectionRequest');
 const User = require('../../models/User');
 const { sendPaymentReceipt } = require('../../services/mailer');
 
@@ -206,8 +207,8 @@ async function syncCheckoutSession(req, res, next) {
       expand: ['payment_intent', 'payment_intent.payment_method', 'payment_intent.charges.data'],
     });
 
-    const transaction = await PaymentTransaction.findOne({ stripeSessionId: sessionId });
-    const bill = transaction ? await Bill.findById(transaction.billId) : await Bill.findOne({ stripeSessionId: sessionId });
+  const transaction = await PaymentTransaction.findOne({ stripeSessionId: sessionId });
+  const bill = transaction ? await Bill.findById(transaction.billId) : await Bill.findOne({ stripeSessionId: sessionId });
 
     if (!session) {
       return res.status(404).json({ ok: false, message: 'Checkout session not found' });
@@ -277,6 +278,54 @@ async function syncCheckoutSession(req, res, next) {
       }
     }
 
+    let requestDetails = null;
+    if (bill.specialCollectionRequestId) {
+      const requestDoc = await SpecialCollectionRequest.findById(bill.specialCollectionRequestId);
+      if (requestDoc) {
+        if (bill.invoiceNumber) {
+          requestDoc.paymentReference = bill.invoiceNumber;
+        }
+
+        if (status === 'success') {
+          requestDoc.paymentStatus = 'success';
+          if (['pending-payment', 'payment-failed'].includes(requestDoc.status)) {
+            requestDoc.status = 'scheduled';
+            requestDoc.cancellationReason = undefined;
+          }
+        } else if (status === 'failed') {
+          requestDoc.paymentStatus = 'failed';
+          if (requestDoc.status === 'pending-payment') {
+            requestDoc.status = 'payment-failed';
+          }
+        }
+
+        await requestDoc.save();
+
+        const linkedRequest = requestDoc.toObject();
+        requestDetails = {
+          id: requestDoc._id.toString(),
+          residentName: linkedRequest.residentName,
+          ownerName: linkedRequest.ownerName,
+          address: linkedRequest.address,
+          district: linkedRequest.district,
+          contactEmail: linkedRequest.contactEmail,
+          contactPhone: linkedRequest.contactPhone,
+          approxWeightKg: linkedRequest.approxWeightKg,
+          totalWeightKg: linkedRequest.totalWeightKg,
+          itemType: linkedRequest.itemType,
+          itemLabel: linkedRequest.itemLabel,
+          quantity: linkedRequest.quantity,
+          slot: linkedRequest.slot,
+          status: linkedRequest.status,
+          paymentStatus: linkedRequest.paymentStatus,
+          paymentAmount: linkedRequest.paymentAmount,
+          paymentSubtotal: linkedRequest.paymentSubtotal,
+          paymentWeightCharge: linkedRequest.paymentWeightCharge,
+          paymentTaxCharge: linkedRequest.paymentTaxCharge,
+        };
+      }
+    }
+
     return res.json({
       ok: true,
       data: {
@@ -286,6 +335,28 @@ async function syncCheckoutSession(req, res, next) {
         billId: bill.id,
         transactionId: transaction.id,
         receiptUrl: transaction.receiptUrl,
+        bill: {
+          id: bill.id,
+          invoiceNumber: bill.invoiceNumber,
+          description: bill.description,
+          amount: bill.amount,
+          currency: bill.currency,
+          dueDate: bill.dueDate,
+          paidAt: bill.paidAt,
+          status: bill.status,
+          category: bill.category,
+        },
+        transaction: {
+          id: transaction.id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          status: transaction.status,
+          paidAt: transaction.updatedAt,
+          paymentMethod: transaction.paymentMethod,
+          receiptUrl: transaction.receiptUrl,
+          paymentIntentId: transaction.stripePaymentIntentId,
+        },
+        request: requestDetails,
       },
     });
   } catch (error) {
