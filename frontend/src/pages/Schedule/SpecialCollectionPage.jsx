@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography, Stepper, Step, StepLabel, Tooltip } from '@mui/material'
+import dayjs from 'dayjs'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { DatePicker } from '@mui/x-date-pickers/DatePicker'
+import { TimePicker } from '@mui/x-date-pickers/TimePicker'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -196,6 +201,19 @@ function RequestForm({
   onReset,
   isFormValid,
 }) {
+  const dateValue = useMemo(() => (form.preferredDate ? dayjs(form.preferredDate) : null), [form.preferredDate])
+  const timeValue = useMemo(() => (form.preferredTime ? dayjs(`1970-01-01T${form.preferredTime}`) : null), [form.preferredTime])
+
+  const handleDateChange = useCallback((newValue) => {
+    const formatted = newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : ''
+    onChange({ target: { name: 'preferredDate', value: formatted } })
+  }, [onChange])
+
+  const handleTimeChange = useCallback((newValue) => {
+    const formatted = newValue && newValue.isValid() ? newValue.format('HH:mm') : ''
+    onChange({ target: { name: 'preferredTime', value: formatted } })
+  }, [onChange])
+
   return (
     <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
@@ -339,35 +357,41 @@ function RequestForm({
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <TextField
+              <DatePicker
                 label="Set date"
-                name="preferredDate"
-                type="date"
-                value={form.preferredDate}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ min: toLocalDateValue(new Date()) }}
-                fullWidth
-                error={Boolean(touched.preferredDate && errors.preferredDate)}
-                helperText={touched.preferredDate && errors.preferredDate}
+                value={dateValue}
+                onChange={handleDateChange}
+                disablePast
+                format="YYYY-MM-DD"
+                slotProps={{
+                  textField: {
+                    required: true,
+                    fullWidth: true,
+                    onBlur,
+                    name: 'preferredDate',
+                    error: Boolean(touched.preferredDate && errors.preferredDate),
+                    helperText: touched.preferredDate && errors.preferredDate,
+                  },
+                }}
               />
             </Grid>
             <Grid item xs={12} md={6}>
-              <TextField
+              <TimePicker
                 label="Set time"
-                name="preferredTime"
-                type="time"
-                value={form.preferredTime}
-                onChange={onChange}
-                onBlur={onBlur}
-                required
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 900 }}
-                fullWidth
-                error={Boolean(touched.preferredTime && errors.preferredTime)}
-                helperText={touched.preferredTime && errors.preferredTime}
+                value={timeValue}
+                onChange={handleTimeChange}
+                ampm
+                minutesStep={15}
+                slotProps={{
+                  textField: {
+                    required: true,
+                    fullWidth: true,
+                    onBlur,
+                    name: 'preferredTime',
+                    error: Boolean(touched.preferredTime && errors.preferredTime),
+                    helperText: touched.preferredTime && errors.preferredTime,
+                  },
+                }}
               />
             </Grid>
             <Grid item xs={12}>
@@ -1078,6 +1102,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           </Alert>
         ) : null}
 
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
         <Box sx={{ maxWidth: 1100, mx: 'auto', width: '100%' }}>
           <Grid container spacing={3} alignItems="stretch">
             <Grid item xs={12} md={7} sx={{ display: 'flex' }}>
@@ -1105,6 +1130,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
             </Grid>
           </Grid>
         </Box>
+        </LocalizationProvider>
 
         <AvailabilitySection
           availability={availability}
