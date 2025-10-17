@@ -169,14 +169,35 @@ describe('ManageCollectionOpsPage', () => {
 
     render(<ManageCollectionOpsPage />)
 
-    let exportButton = await screen.findByRole('button', { name: /Export report/i })
-    expect(exportButton).toBeDisabled()
+  let exportButton = await screen.findByRole('button', { name: /Export report/i })
+  expect(exportButton).toBeDisabled()
 
     const [generateButton] = await screen.findAllByTestId('generate-route')
     await userEvent.click(generateButton)
 
     await screen.findByText('Truck default: TRUCK-99')
     await screen.findByText(/Approx\. 490 kg/) // high waste area aggregate rounding
+
+    await waitFor(() => {
+      expect(exportButton).not.toBeDisabled()
+    })
+
+    await userEvent.click(exportButton)
+    await waitFor(() => {
+      expect(buildSpy).toHaveBeenCalledTimes(1)
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(1)
+      expect(appendSpy).toHaveBeenCalled()
+      expect(removeSpy).toHaveBeenCalled()
+    })
+
+    let buildArgs = buildSpy.mock.calls.at(-1)?.[0] ?? {}
+    expect(buildArgs).toMatchObject({
+      city: 'Colombo',
+      plan: expect.objectContaining({ truckId: 'TRUCK-99' }),
+      completedStops: 1,
+      remainingStops: 2,
+      liveSync: false,
+    })
 
     const confirmButton = await screen.findByRole('button', { name: /Confirm route/i })
     await userEvent.click(confirmButton)
@@ -195,21 +216,14 @@ describe('ManageCollectionOpsPage', () => {
     expect(optimizePayloads[0]).toMatchObject({ city: 'Colombo', timeWindow: '06:00-10:00' })
     expect(optimizePayloads.at(-1)).toMatchObject({ confirm: true, timeWindow: '06:00-10:00' })
 
-    exportButton = await screen.findByRole('button', { name: /Export report/i })
-    await waitFor(() => {
-      expect(exportButton).not.toBeDisabled()
-    })
-
     await userEvent.click(exportButton)
 
     await waitFor(() => {
-      expect(buildSpy).toHaveBeenCalled()
-      expect(createObjectURLSpy).toHaveBeenCalled()
-      expect(appendSpy).toHaveBeenCalled()
-      expect(removeSpy).toHaveBeenCalled()
+      expect(buildSpy).toHaveBeenCalledTimes(2)
+      expect(createObjectURLSpy).toHaveBeenCalledTimes(2)
     })
 
-    const buildArgs = buildSpy.mock.calls.at(-1)?.[0] ?? {}
+    buildArgs = buildSpy.mock.calls.at(-1)?.[0] ?? {}
     expect(buildArgs).toMatchObject({
       city: 'Colombo',
       plan: expect.objectContaining({ truckId: 'TRUCK-99' }),
