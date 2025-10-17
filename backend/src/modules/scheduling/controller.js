@@ -14,12 +14,15 @@ const { generateSpecialCollectionReceipt } = require('./receipt');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
+// Ensures every error response shares a predictable envelope for the frontend.
 const respondWithError = (res, status, message, extra = {}) => (
   res.status(status).json({ ok: false, message, ...extra })
 );
 
+// Zod parser helper that narrows validation error handling to one place.
 const handleZodError = (res, error) => respondWithError(res, 400, error.errors[0].message);
 
+// Catalogue of supported item types with rate card details.
 const allowedItems = [
   {
     id: 'furniture',
@@ -65,6 +68,7 @@ const allowedItems = [
   },
 ];
 
+// Slot generation parameters centralised for consistency across flows.
 const SLOT_CONFIG = {
   startHour: 8,
   endHour: 17,
@@ -76,6 +80,7 @@ const SLOT_CONFIG = {
 
 const TAX_RATE = 0.03; // 3% municipal service levy
 
+// Freeze configuration objects to avoid accidental mutation at runtime.
 allowedItems.forEach(item => {
   if (item.policy) {
     Object.freeze(item.policy);
@@ -126,6 +131,7 @@ const checkoutInitSchema = availabilitySchema.extend({
   cancelUrl: z.string().url('Cancel URL must be a valid URL'),
 });
 
+// Looks up the pricing policy for a given special collection category.
 function findItemPolicy(itemType) {
   return allowedItems.find(item => item.id === itemType);
 }
@@ -154,6 +160,7 @@ function slotIdFor(date) {
   return normaliseDate(date).toISOString();
 }
 
+// Builds the rolling window of slots a resident can choose from based on config.
 function generateCandidateSlots(preferred, { lookAheadDays, startHour, endHour, durationMinutes }) {
   const slots = [];
   const startDay = new Date(preferred);
@@ -188,6 +195,7 @@ function getPreferredDayBounds(preferred) {
   return { preferredDayStart, preferredDayEnd };
 }
 
+// Restricts slots to the resident's chosen day while ignoring past windows.
 function filterCandidatesForPreferredDay(candidates, preferred, now = new Date()) {
   const { preferredDayStart, preferredDayEnd } = getPreferredDayBounds(preferred);
   return candidates.filter(candidate => (
@@ -197,6 +205,7 @@ function filterCandidatesForPreferredDay(candidates, preferred, now = new Date()
   ));
 }
 
+// Annotates slot candidates with remaining capacity and drops full entries.
 async function attachAvailability(slots) {
   const results = [];
   for (const slot of slots) {
@@ -219,6 +228,7 @@ function toPositiveNumber(value) {
   return Number.isFinite(num) && num > 0 ? num : 0;
 }
 
+// Computes the payable amount, breaking out weight-based and base charges.
 function calculatePayment(itemPolicy, quantity, approxWeightPerItemKg) {
   if (!itemPolicy?.policy) {
     return { required: false, amount: 0, totalWeightKg: 0, weightCharge: 0, baseCharge: 0 };
@@ -276,6 +286,7 @@ function calculatePayment(itemPolicy, quantity, approxWeightPerItemKg) {
   };
 }
 
+// Periodically cancels bookings that never completed payment before their slot.
 async function expireOverduePendingRequests() {
   const now = new Date();
   const overdue = await SpecialCollectionRequest.find({
@@ -304,12 +315,14 @@ async function expireOverduePendingRequests() {
   });
 }
 
+// Generates a human-readable invoice code tied to the request identifier.
 function generateSpecialCollectionInvoiceNumber(requestId) {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const suffix = requestId.toString().slice(-6).toUpperCase();
   return `SC-${datePart}-${suffix}`;
 }
 
+// Records a booking that still requires payment and issues an internal invoice.
 async function createDeferredBooking({ user, payload, slot, payment, itemPolicy }) {
   const requestDoc = await SpecialCollectionRequest.create({
     userId: user._id,
@@ -368,6 +381,7 @@ async function createDeferredBooking({ user, payload, slot, payment, itemPolicy 
   return { requestDoc, bill };
 }
 
+// Sends resident and authority notifications, capturing timestamps when successful.
 async function dispatchBookingEmails({ user, requestDoc, slot, receiptBuffer, issuedAt }) {
   try {
     const [residentNotice, authorityNotice] = await Promise.all([
@@ -410,6 +424,7 @@ async function dispatchBookingEmails({ user, requestDoc, slot, receiptBuffer, is
 }
 
 const PENDING_PAYMENT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+// Background sweep keeps slot utilisation accurate when residents abandon checkout.
 if (process.env.SCHEDULING_SWEEP_DISABLED !== 'true') {
   const sweepTimer = setInterval(() => {
     expireOverduePendingRequests().catch(error => {
@@ -421,6 +436,7 @@ if (process.env.SCHEDULING_SWEEP_DISABLED !== 'true') {
   }
 }
 
+// Centralised scheduler that either confirms or defers a booking and triggers emails.
 async function finaliseBooking({
   user,
   payload,
@@ -543,6 +559,7 @@ async function finaliseBooking({
   return requestDoc;
 }
 
+// Fetches the resident profile while enforcing activation checks.
 async function resolveUser(userId) {
   const user = await User.findById(userId).lean();
   if (!user) {
@@ -558,6 +575,7 @@ async function resolveUser(userId) {
   return user;
 }
 
+// Supplies the FE with static config such as allowed items and slot window.
 async function getConfig(_req, res) {
   return res.json({
     ok: true,
@@ -566,6 +584,7 @@ async function getConfig(_req, res) {
   });
 }
 
+// Validates a resident's request and returns viable slots plus pricing.
 async function checkAvailability(req, res, next) {
   try {
     const payload = availabilitySchema.parse(req.body);
@@ -611,6 +630,7 @@ async function checkAvailability(req, res, next) {
   }
 }
 
+// Finalises a booking coming from the resident portal (with or without payment).
 async function confirmBooking(req, res, next) {
   try {
     const payload = bookingSchema.parse(req.body);
@@ -698,6 +718,7 @@ async function confirmBooking(req, res, next) {
   }
 }
 
+// Initiates Stripe checkout for bookings that require upfront payment.
 async function startCheckout(req, res, next) {
   try {
     if (!stripe) {
@@ -818,6 +839,7 @@ async function startCheckout(req, res, next) {
   }
 }
 
+// Reconciles the Stripe session outcome and, when successful, finalises the booking.
 async function syncCheckout(req, res, next) {
   try {
     if (!stripe) {
@@ -972,6 +994,7 @@ async function syncCheckout(req, res, next) {
   }
 }
 
+// Lists a resident's historical special collection requests in reverse chronology.
 async function listUserRequests(req, res, next) {
   try {
     const { userId } = listSchema.parse(req.query);
@@ -996,6 +1019,7 @@ async function listUserRequests(req, res, next) {
   }
 }
 
+// Streams a PDF receipt for the requesting resident if they own the booking.
 async function downloadReceipt(req, res, next) {
   try {
     const { requestId } = z.object({ requestId: z.string().min(1) }).parse(req.params);

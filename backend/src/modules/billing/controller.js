@@ -9,6 +9,7 @@ const { sendPaymentReceipt } = require('../../services/mailer');
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
+// Allows operators to tweak supported methods without modifying code.
 const configuredPaymentMethods = process.env.STRIPE_PAYMENT_METHODS
   ? process.env.STRIPE_PAYMENT_METHODS.split(',').map(method => method.trim()).filter(Boolean)
   : null;
@@ -22,6 +23,7 @@ if (SUPPORTED_PAYMENT_METHODS.size === 0) {
   SUPPORTED_PAYMENT_METHODS.add('card');
 }
 
+// Standard error payload keeps the frontend error handling consistent.
 const respondWithError = (res, status, message, extra = {}) => (
   res.status(status).json({ ok: false, message, ...extra })
 );
@@ -33,6 +35,7 @@ const respondWithValidationError = (res, error) => respondWithError(
   { issues: error.issues },
 );
 
+// Shared guard that responds on invalid payloads and returns typed data otherwise.
 const parseOrRespond = (schema, payload, res) => {
   const result = schema.safeParse(payload);
   if (!result.success) {
@@ -42,6 +45,7 @@ const parseOrRespond = (schema, payload, res) => {
   return result.data;
 };
 
+// Prevents runtime failures when Stripe credentials are omitted in the environment.
 const ensureStripeConfigured = res => {
   if (!stripe) {
     respondWithError(res, 500, 'Stripe is not configured');
@@ -66,6 +70,7 @@ const syncParamsSchema = z.object({ sessionId: z.string().min(1) });
 const receiptParamsSchema = z.object({ transactionId: z.string().min(1) });
 const receiptQuerySchema = z.object({ userId: z.string().min(1) });
 
+// Returns resident bills grouped into outstanding and paid collections with summary stats.
 async function listBills(req, res, next) {
   const parsedQuery = parseOrRespond(listBillsSchema, req.query, res);
   if (!parsedQuery) {
@@ -131,6 +136,7 @@ async function listBills(req, res, next) {
   }
 }
 
+// Creates a Stripe checkout and records a pending transaction for the bill.
 async function createCheckoutSession(req, res, next) {
   if (!ensureStripeConfigured(res)) {
     return undefined;
@@ -229,6 +235,7 @@ async function createCheckoutSession(req, res, next) {
   }
 }
 
+// Reconciles Stripe checkout results with stored transactions and linked requests.
 async function syncCheckoutSession(req, res, next) {
   if (!ensureStripeConfigured(res)) {
     return undefined;
@@ -407,6 +414,7 @@ async function syncCheckoutSession(req, res, next) {
   }
 }
 
+// Serves a lightweight receipt summary scoped to the requesting user.
 async function getReceipt(req, res, next) {
   const params = parseOrRespond(receiptParamsSchema, req.params, res);
   const query = params ? parseOrRespond(receiptQuerySchema, req.query, res) : null;

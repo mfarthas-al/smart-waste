@@ -1,3 +1,4 @@
+// Aggregates feature routers under the /api namespace.
 const router = require('express').Router();
 
 router.use('/ops', require('./modules/collectionOps/routes'));   // UC1

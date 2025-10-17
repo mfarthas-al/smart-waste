@@ -2,6 +2,7 @@ const { z } = require('zod');
 const RoutePlan = require('../../models/RoutePlan');
 
 let cachedFetch = null;
+// Delay loading node-fetch until needed to keep cold starts fast.
 const getFetch = async () => {
   if (!cachedFetch) {
     cachedFetch = (await import('node-fetch')).default;
@@ -15,6 +16,7 @@ const toOSRMCoords = coords => coords.map(([lat, lon]) => `${lon},${lat}`).join(
 
 const paramsSchema = z.object({ truckId: z.string().min(1) });
 
+// Uses the public OSRM API to translate a plan into a drivable polyline.
 exports.getPlanDirections = async (req, res) => {
   const parsedParams = paramsSchema.safeParse(req.params);
   if (!parsedParams.success) {

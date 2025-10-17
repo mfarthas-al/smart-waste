@@ -2,6 +2,7 @@ const { z } = require('zod');
 const WasteCollectionRecord = require('../../models/WasteCollectionRecord');
 const User = require('../../models/User');
 
+// Validates the dashboard-driven filters before running heavy aggregations.
 const criteriaSchema = z.object({
   userId: z.string({ required_error: 'User id is required' }).min(1, 'User id is required'),
   criteria: z.object({
@@ -18,6 +19,7 @@ const criteriaSchema = z.object({
   }),
 }).strict();
 
+// Lightweight grouping helper so we can build summaries without additional deps.
 function groupBy(array, keyGetter) {
   return array.reduce((acc, item) => {
     const key = keyGetter(item)
@@ -29,6 +31,7 @@ function groupBy(array, keyGetter) {
     }, new Map());
 }
 
+// Surfaces filter metadata so the frontend can pre-populate selectors.
 async function getConfig(_req, res, next) {
   try {
     const [regions, wasteTypes, billingModels, firstRecord, lastRecord] = await Promise.all([
@@ -56,6 +59,7 @@ async function getConfig(_req, res, next) {
   }
 }
 
+// Converts the validated criteria into a MongoDB selector.
 function buildMatch({ criteria }) {
   const { dateRange, regions = [], wasteTypes = [], billingModels = [] } = criteria
   const match = {
@@ -76,6 +80,7 @@ function buildMatch({ criteria }) {
   return match;
 }
 
+// Builds all charts and tables for the analytics view from the raw records.
 function makeReportPayload(records, { criteria }) {
   const normalizedCriteria = {
     ...criteria,
@@ -167,6 +172,7 @@ function makeReportPayload(records, { criteria }) {
   };
 }
 
+// Generates the report payload if the caller is an authorised admin.
 async function generateReport(req, res, next) {
   try {
     const payload = criteriaSchema.parse(req.body);

@@ -6,6 +6,7 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Embedded structure captures route stops without extra collections.
 const stopSchema = new Schema({
   binId: { type: String },
   lat: { type: Number },
@@ -14,6 +15,7 @@ const stopSchema = new Schema({
   visited: { type: Boolean, default: false },
 }, { _id: false });
 
+// Tracks a single day's optimized plan for a collection truck.
 const schema = new Schema({
   date: { type: Date, index: true },
   ward: { type: String },

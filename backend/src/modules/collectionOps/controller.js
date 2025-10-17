@@ -8,10 +8,12 @@ const { estimateKg, optimize } = require('./service.routing');
 
 const DEFAULT_TRUCK_ID = 'TRUCK-01';
 
+// Normalises operational error responses for the operations dashboard.
 const respondWithError = (res, status, message, extra = {}) => (
   res.status(status).json({ error: message, ...extra })
 );
 
+// Light-weight validation wrapper that bails early on invalid requests.
 const parseOrRespond = (schema, payload, res) => {
   const result = schema.safeParse(payload);
   if (!result.success) {
@@ -21,6 +23,7 @@ const parseOrRespond = (schema, payload, res) => {
   return result.data;
 };
 
+// Helpers keep date arithmetic consistent across queries.
 const startOfDay = date => {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -77,6 +80,7 @@ const recordCollectionSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+// Provides metadata for the operations UI to render city selectors.
 exports.listCities = async (_req, res) => {
   const cities = await City.find()
     .select('name code depot bbox areaSqKm population lastCollectionAt -_id')
@@ -84,6 +88,7 @@ exports.listCities = async (_req, res) => {
   return res.json(cities);
 };
 
+// Returns bins in a city so planners can inspect fill rates.
 exports.listBinsByCity = async (req, res) => {
   const parsedQuery = parseOrRespond(listBinsQuerySchema, req.query || {}, res);
   if (!parsedQuery) {
@@ -97,6 +102,7 @@ exports.listBinsByCity = async (req, res) => {
   return res.json(bins);
 };
 
+// Runs the optimisation routine and persists the resulting plan for the day.
 exports.optimizeRoute = async (req, res) => {
   const payload = parseOrRespond(optimizeRouteSchema, req.body || {}, res);
   if (!payload) {
@@ -214,6 +220,7 @@ exports.optimizeRoute = async (req, res) => {
   }
 };
 
+// Fetches today's plan for a truck, filling missing depot info if needed.
 exports.getTodayRoute = async (req, res) => {
   const params = parseOrRespond(todayRouteParamsSchema, req.params || {}, res);
   if (!params) {
@@ -246,6 +253,7 @@ exports.getTodayRoute = async (req, res) => {
   }
 };
 
+// Records a completed pickup and updates both the route plan and bin metadata.
 exports.recordCollection = async (req, res) => {
   const payload = parseOrRespond(recordCollectionSchema, req.body || {}, res);
   if (!payload) {

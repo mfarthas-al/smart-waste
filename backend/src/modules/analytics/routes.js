@@ -1,3 +1,4 @@
+// Routes expose reporting utilities consumed by the admin analytics dashboard.
 const router = require('express').Router();
 const controller = require('./controller');
 

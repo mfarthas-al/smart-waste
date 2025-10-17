@@ -3,12 +3,14 @@ const User = require('../../models/User');
 const MAX_FAILED_ATTEMPTS = 3;
 const LOCK_DURATION_MINUTES = 15;
 
+// Codes are consumed by the controller to pick appropriate HTTP statuses.
 const ERROR_CODES = Object.freeze({
   inactive: 'ACCOUNT_INACTIVE',
   locked: 'ACCOUNT_LOCKED',
   emailTaken: 'EMAIL_TAKEN',
 });
 
+// Removes sensitive fields before returning the user to the caller.
 const toViewModel = userDoc => ({
   id: userDoc.id,
   email: userDoc.email,
@@ -20,6 +22,7 @@ const normalizeEmail = value => value.trim().toLowerCase();
 
 const createError = (code, message, extra = {}) => Object.assign(new Error(message), { code, ...extra });
 
+// Attempts authentication while enforcing lockout rules and returns a safe profile.
 async function authenticate(email, password) {
   const normalizedEmail = normalizeEmail(email);
   const user = await User.findOne({ email: normalizedEmail });
@@ -58,6 +61,7 @@ async function authenticate(email, password) {
   return toViewModel(user);
 }
 
+// Creates a new resident record with a hashed password and canonical email.
 async function createUser({ name, email, password }) {
   const normalizedEmail = normalizeEmail(email);
   const existing = await User.findOne({ email: normalizedEmail });
@@ -76,6 +80,7 @@ async function createUser({ name, email, password }) {
   return toViewModel(user);
 }
 
+// Utility hook for other modules that need to fetch a user by email.
 async function findUserByEmail(email) {
   return User.findOne({ email: normalizeEmail(email) });
 }

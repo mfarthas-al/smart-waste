@@ -8,6 +8,7 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Persisted snapshot of payments captured during special collections.
 const paymentSchema = new Schema({
   requestId: { type: Types.ObjectId, ref: 'SpecialCollectionRequest' },
   userId: { type: Types.ObjectId, ref: 'User', required: true },

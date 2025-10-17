@@ -23,6 +23,7 @@ const schemaOptions = {
   },
 };
 
+// Minimal authentication profile with lockout protection metadata.
 const userSchema = new mongoose.Schema({
   email: {
     type: String,

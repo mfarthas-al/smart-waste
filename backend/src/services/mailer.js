@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 
+// Optional verbose logging for troubleshooting SMTP behaviour.
 const debugMail = (...args) => {
   if (process.env.SMTP_DEBUG === 'true') {
     console.info('[mailer]', ...args);
@@ -18,6 +19,7 @@ const currencyFormatter = new Intl.NumberFormat('en-LK', {
   maximumFractionDigits: 2,
 });
 
+// Shared formatter keeps all outbound timestamps localised consistently.
 const toLocale = (input, options) => {
   const value = input instanceof Date ? input : new Date(input);
   if (Number.isNaN(value.getTime())) {
@@ -38,6 +40,7 @@ const toTimeString = value => toLocale(value, {
   minute: '2-digit',
 });
 
+// Trims metadata values so they meet Stripe limits without mutating callers.
 const sanitizeMetadata = metadata => {
   if (!metadata) {
     return undefined;
@@ -56,6 +59,7 @@ function formatCurrency(amount) {
   return currencyFormatter.format(value);
 }
 
+// Lazily initialises the SMTP transporter so application boot stays fast.
 function getTransporter() {
   if (transporter) {
     debugMail('Reusing existing transporter');
@@ -88,6 +92,7 @@ function getTransporter() {
   return transporter;
 }
 
+// Low-level helper used by all outbound emails in this service.
 async function sendMail(message) {
   const mailClient = getTransporter();
   if (!mailClient) {
@@ -122,6 +127,7 @@ async function sendMail(message) {
   }
 }
 
+// Sends residents a confirmation email, optionally attaching a receipt PDF.
 async function sendSpecialCollectionConfirmation({ resident, slot, request, receipt }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
@@ -252,6 +258,7 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request, rece
   return sendMail({ to: resident.email, subject, text, html, attachments });
 }
 
+// Notifies municipal operations when a new special collection is scheduled.
 async function notifyAuthorityOfSpecialPickup({ request, slot }) {
   const authorityEmail = process.env.COLLECTION_AUTHORITY_EMAIL;
   if (!authorityEmail) {
@@ -285,6 +292,7 @@ async function notifyAuthorityOfSpecialPickup({ request, slot }) {
   return sendMail({ to: authorityEmail, subject, text, html });
 }
 
+// Issues a billing confirmation once Stripe marks a payment as successful.
 async function sendPaymentReceipt({ resident, bill, transaction }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };

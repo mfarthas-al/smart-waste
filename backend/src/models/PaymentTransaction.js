@@ -8,6 +8,7 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Mirrors gateway interactions and their lifecycle for reconciliation.
 const transactionSchema = new Schema({
   billId: { type: Types.ObjectId, ref: 'Bill', required: true, index: true },
   userId: { type: Types.ObjectId, ref: 'User', required: true, index: true },

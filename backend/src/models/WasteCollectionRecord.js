@@ -10,6 +10,7 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Aggregation-friendly snapshot of each pickup for analytics.
 const recordSchema = new Schema({
   collectionDate: { type: Date, required: true, index: true },
   region: { type: String, required: true, index: true },

@@ -2,6 +2,7 @@ const PDFDocument = require('pdfkit');
 
 const DEFAULT_TIMEZONE = 'Asia/Colombo';
 
+// Keeps currency rendering consistent with the resident-facing emails and UI.
 const currencyFormatter = new Intl.NumberFormat('en-LK', {
   style: 'currency',
   currency: 'LKR',
@@ -9,6 +10,7 @@ const currencyFormatter = new Intl.NumberFormat('en-LK', {
   maximumFractionDigits: 2,
 });
 
+// Defensive date formatter used across receipt fields.
 const toLocale = (value, options) => {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -60,6 +62,7 @@ function writeKeyValue(doc, label, value, options = {}) {
   doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10).fillColor('#111827').text(` ${value}`);
 }
 
+// Produces a brand-aligned receipt PDF for special collections.
 async function generateSpecialCollectionReceipt({ request, slot, issuedAt = new Date() }) {
   const doc = new PDFDocument({ margin: 48, size: 'A4' });
   const chunks = [];

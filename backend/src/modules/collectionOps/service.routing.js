@@ -6,6 +6,7 @@ const TIE_TOLERANCE = 1e-6;
 
 const toRadians = degrees => (degrees * Math.PI) / 180;
 
+// Distance utility underpins both candidate sorting and travel budgeting.
 const haversineKm = (from, to) => {
   if (!from || !to) return 0;
   const dLat = toRadians((to.lat ?? 0) - (from.lat ?? 0));
@@ -17,6 +18,7 @@ const haversineKm = (from, to) => {
   return EARTH_RADIUS_KM * c;
 };
 
+// Approximates current fill level using simple linear growth since last pickup.
 const estimateKg = bin => {
   if (!bin) return 0;
   const capacity = Number(bin.capacityKg) || 0;
@@ -30,6 +32,7 @@ const estimateKg = bin => {
   return Math.min(capacity, estimated);
 };
 
+// Greedy nearest-neighbour pass that respects basic truck and distance constraints.
 const buildPlans = ({ candidates, depot, truckCapacity, trucks, maxDistanceKm }) => {
   const plans = [];
   const remaining = [...candidates];
@@ -103,6 +106,7 @@ const buildPlans = ({ candidates, depot, truckCapacity, trucks, maxDistanceKm })
   return plans;
 };
 
+// Filters bins down to viable stops and applies deterministic ordering.
 const toCandidates = ({ bins, depot, threshold, truckCapacity }) => {
   const effectiveThreshold = Number(threshold) || 0;
   const effectiveTruckCapacity = Number(truckCapacity) || 0;
@@ -125,6 +129,7 @@ const toCandidates = ({ bins, depot, threshold, truckCapacity }) => {
     });
 };
 
+// Public entrypoint: accepts either legacy positional args or structured params.
 function optimize(options = {}) {
   if (options && options.params) {
     const { bins = [], params = {} } = options;

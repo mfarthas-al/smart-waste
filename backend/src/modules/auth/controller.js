@@ -3,21 +3,25 @@ const authService = require('./service');
 
 const { ERROR_CODES } = authService;
 
+// Normalised JSON error shape keeps the frontend handler simple.
 const respondWithError = (res, status, message, extra = {}) => (
   res.status(status).json({ ok: false, message, ...extra })
 );
 
+// Credentials rules mirror the registration form expectations.
 const loginSchema = z.object({
   email: z.string({ required_error: 'Email is required' }).email('Enter a valid email'),
   password: z.string({ required_error: 'Password is required' }).min(6, 'Password must be at least 6 characters'),
 });
 
+// Registration requires a stronger password than login for future-proofing.
 const registerSchema = z.object({
   name: z.string({ required_error: 'Name is required' }).min(2, 'Name must be at least 2 characters').max(80, 'Name is too long'),
   email: z.string({ required_error: 'Email is required' }).email('Enter a valid email'),
   password: z.string({ required_error: 'Password is required' }).min(8, 'Password must be at least 8 characters'),
 });
 
+// Authenticates a resident or admin and returns a trimmed user profile.
 async function login(req, res, next) {
   try {
     const parsed = loginSchema.safeParse(req.body);
@@ -48,6 +52,7 @@ async function login(req, res, next) {
   }
 }
 
+// Creates a user account and immediately signs the caller in.
 async function register(req, res, next) {
   try {
     const parsed = registerSchema.safeParse(req.body);

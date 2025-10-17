@@ -9,12 +9,14 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Embedded representation of the chosen booking slot.
 const slotSchema = new Schema({
   slotId: { type: String, required: true },
   start: { type: Date, required: true },
   end: { type: Date, required: true },
 }, { _id: false });
 
+// Core document for the special collection booking workflow.
 const requestSchema = new Schema({
   userId: { type: Types.ObjectId, ref: 'User', required: true },
   userEmail: { type: String, required: true },

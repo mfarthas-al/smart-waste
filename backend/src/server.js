@@ -4,6 +4,7 @@ const app = require('./app');
 
 const PORT = process.env.PORT || 4000;
 
+// Bootstraps the API after establishing a database connection.
 connectDB()
   .then(() => {
     console.log('✅ MongoDB connected');

@@ -6,6 +6,7 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Represents a physical bin and its rough fill-rate characteristics.
 const schema = new Schema({
   binId: { type: String, unique: true, index: true },
   ward: { type: String },

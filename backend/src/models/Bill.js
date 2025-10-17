@@ -1,5 +1,6 @@
 const { Schema, model, Types } = require('mongoose');
 
+// Enumerations keep downstream validation consistent between controllers and persistence.
 const BILL_CATEGORIES = Object.freeze(['residential', 'special-collection']);
 const BILL_STATUSES = Object.freeze(['unpaid', 'paid', 'cancelled']);
 
@@ -9,6 +10,7 @@ const schemaOptions = {
   toObject: { versionKey: false },
 };
 
+// Stores an invoice that can be tied back to a resident and optional special collection request.
 const billSchema = new Schema({
   userId: { type: Types.ObjectId, ref: 'User', required: true, index: true },
   invoiceNumber: { type: String, required: true, unique: true },
