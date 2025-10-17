@@ -1,6 +1,28 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+const SALT_ROUNDS = 10;
+
+const schemaOptions = {
+  timestamps: true,
+  toJSON: {
+    versionKey: false,
+    // Prevents leaking password hashes when documents are serialized.
+    transform: (_doc, ret) => {
+      delete ret.passwordHash;
+      return ret;
+    },
+  },
+  toObject: {
+    versionKey: false,
+    // Mirrors the JSON transform for consistency across serializers.
+    transform: (_doc, ret) => {
+      delete ret.passwordHash;
+      return ret;
+    },
+  },
+};
+
 const userSchema = new mongoose.Schema({
   email: {
     type: String,
@@ -35,9 +57,7 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-}, {
-  timestamps: true,
-});
+}, schemaOptions);
 
 userSchema.methods.verifyPassword = function verifyPassword(candidate) {
   return bcrypt.compare(candidate, this.passwordHash);
@@ -77,8 +97,7 @@ userSchema.methods.registerFailedLogin = async function registerFailedLogin(maxA
 };
 
 userSchema.statics.hashPassword = function hashPassword(plain) {
-  const saltRounds = 10;
-  return bcrypt.hash(plain, saltRounds);
+  return bcrypt.hash(plain, SALT_ROUNDS);
 };
 
 module.exports = mongoose.model('User', userSchema);

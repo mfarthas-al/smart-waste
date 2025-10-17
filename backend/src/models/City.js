@@ -1,9 +1,15 @@
-const { Schema, model } = require('mongoose')
+const { Schema, model } = require('mongoose');
+
+const schemaOptions = {
+  timestamps: true,
+  toJSON: { versionKey: false },
+  toObject: { versionKey: false },
+};
 
 const bboxSchema = {
   type: [[Number]],
   default: undefined,
-}
+};
 
 const schema = new Schema({
   name: { type: String, unique: true, index: true },
@@ -13,6 +19,6 @@ const schema = new Schema({
   areaSqKm: Number,
   population: Number,
   lastCollectionAt: Date,
-}, { timestamps: true })
+}, schemaOptions);
 
-module.exports = model('City', schema)
+module.exports = model('City', schema);
