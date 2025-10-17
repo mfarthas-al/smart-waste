@@ -3,12 +3,17 @@ const stop = new Schema({
   binId: String, lat: Number, lon: Number, estKg: Number, visited: { type: Boolean, default: false }
 }, { _id: false });
 const schema = new Schema({
-  date: Date,
+  date: { type: Date, index: true },
   ward: String,
-  truckId: String,
+  city: { type: String, index: true },
+  area: { type: String, index: true },
+  truckId: { type: String, index: true },
   depot: { lat: Number, lon: Number },
   stops: [stop],
   loadKg: Number,
   distanceKm: Number
 }, { timestamps: true });
+
+schema.index({ city: 1, truckId: 1, date: 1 })
+
 module.exports = model('RoutePlan', schema);
