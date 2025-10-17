@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, CardContent, Chip, Divider, LinearProgress } from '@mui/material'
 import { Loader2, MapPinned, Share2, FileDown, ShieldCheck, Gauge, Timer, Route as RouteIcon, Truck } from 'lucide-react'
 import RouteMap from './RouteMap.jsx'
@@ -42,6 +42,23 @@ const PROGRESS_TEMPLATE = [
   { label: 'Finalizing dispatch plan', status: 'idle' },
 ]
 
+const INITIAL_ZONE_DETAILS = Object.freeze({ totalBins: '—', areaSize: '—', population: '—', lastCollection: '—' })
+const DEFAULT_CAPACITY = 3000
+const OPTIMIZE_ENDPOINT = '/api/ops/routes/optimize'
+const CITIES_ENDPOINT = '/api/ops/cities'
+const BINS_ENDPOINT = '/api/ops/bins'
+const DIRECTIONS_ENDPOINT = '/api/ops/routes'
+
+const createProgressState = (activeIndex = -1, status = 'idle') => PROGRESS_TEMPLATE.map((step, index) => {
+  if (status === 'done') {
+    return { ...step, status: 'done' }
+  }
+  if (activeIndex === -1) {
+    return { ...step, status: 'idle' }
+  }
+  return { ...step, status: index === activeIndex ? 'active' : index < activeIndex ? 'done' : 'idle' }
+})
+
 const formatDateLabel = value => {
   if (!value) return '—'
   const date = new Date(value)
@@ -70,8 +87,8 @@ export default function ManageCollectionOpsPage() {
   const [plan, setPlan] = useState(null)
   const [directions, setDirections] = useState(null)
   const [bins, setBins] = useState([])
-  const [zoneDetails, setZoneDetails] = useState({ totalBins: '—', areaSize: '—', population: '—', lastCollection: '—' })
-  const [progressSteps, setProgressSteps] = useState(PROGRESS_TEMPLATE.map(step => ({ ...step })))
+  const [zoneDetails, setZoneDetails] = useState(INITIAL_ZONE_DETAILS)
+  const [progressSteps, setProgressSteps] = useState(createProgressState())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [lastOptimizedAt, setLastOptimizedAt] = useState(null)
@@ -80,7 +97,7 @@ export default function ManageCollectionOpsPage() {
     let ignore = false
     async function loadCities() {
       try {
-        const res = await fetch('/api/ops/cities')
+  const res = await fetch(CITIES_ENDPOINT)
         if (!res.ok) {
           throw new Error(`Failed to load cities (${res.status})`)
         }
@@ -111,7 +128,7 @@ export default function ManageCollectionOpsPage() {
 
     async function loadBins() {
       try {
-        const res = await fetch(`/api/ops/bins?city=${encodeURIComponent(city)}`)
+  const res = await fetch(`${BINS_ENDPOINT}?city=${encodeURIComponent(city)}`)
         if (!res.ok) {
           throw new Error(`Failed to load bins (${res.status})`)
         }
@@ -138,14 +155,14 @@ export default function ManageCollectionOpsPage() {
     setDirections(null)
     setError('')
     setLastOptimizedAt(null)
-    setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step })))
+  setProgressSteps(createProgressState())
   }, [city])
 
   const selectedCity = useMemo(() => cities.find(entry => entry.name === city), [cities, city])
   const currentDepot = plan?.depot ?? selectedCity?.depot
   const depotLat = currentDepot?.lat ? currentDepot.lat.toFixed(3) : '—'
   const depotLon = currentDepot?.lon ? currentDepot.lon.toFixed(3) : '—'
-  const capacityLimit = plan?.summary?.truckCapacityKg ?? 3000
+  const capacityLimit = plan?.summary?.truckCapacityKg ?? DEFAULT_CAPACITY
 
   useEffect(() => {
     if (!selectedCity) {
@@ -169,13 +186,13 @@ export default function ManageCollectionOpsPage() {
     })
   }, [selectedCity, bins.length])
 
-  async function optimize() {
+  const optimize = useCallback(async () => {
     if (!city) return
     setLoading(true)
     setError('')
-    setProgressSteps(PROGRESS_TEMPLATE.map((step, index) => ({ ...step, status: index === 0 ? 'active' : 'idle' })))
+    setProgressSteps(createProgressState(0))
     try {
-      const res = await fetch('/api/ops/routes/optimize', {
+      const res = await fetch(OPTIMIZE_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ city }),
@@ -193,11 +210,11 @@ export default function ManageCollectionOpsPage() {
       }
       setPlan(normalized)
       setLastOptimizedAt(new Date())
-      setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step, status: 'done' })))
+      setProgressSteps(createProgressState(-1, 'done'))
 
       if (normalized.truckId) {
         try {
-          const dirRes = await fetch(`/api/ops/routes/${encodeURIComponent(normalized.truckId)}/directions`)
+          const dirRes = await fetch(`${DIRECTIONS_ENDPOINT}/${encodeURIComponent(normalized.truckId)}/directions`)
           if (!dirRes.ok) {
             throw new Error(`Directions failed (${dirRes.status})`)
           }
@@ -213,11 +230,11 @@ export default function ManageCollectionOpsPage() {
     } catch (err) {
       console.error('optimize error', err)
       setError('Could not optimize right now. Please try again in a moment.')
-      setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step })))
+      setProgressSteps(createProgressState())
     } finally {
       setLoading(false)
     }
-  }
+  }, [city, selectedCity])
 
   const loadProgress = plan && capacityLimit > 0
     ? Math.min(100, Math.round(((plan.loadKg ?? 0) / capacityLimit) * 100))

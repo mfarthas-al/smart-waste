@@ -1,3 +1,5 @@
+import PropTypes from 'prop-types'
+import { memo } from 'react'
 import { CheckCircle2, Loader2, Circle } from 'lucide-react'
 
 const iconByStatus = status => {
@@ -6,7 +8,7 @@ const iconByStatus = status => {
   return <Circle className="h-4 w-4 text-slate-400" />
 }
 
-export default function ProgressSteps({ steps }) {
+function ProgressSteps({ steps }) {
   return (
     <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
       <p className="text-sm font-semibold text-emerald-700">Route optimization in progress…</p>
@@ -21,3 +23,12 @@ export default function ProgressSteps({ steps }) {
     </div>
   )
 }
+
+ProgressSteps.propTypes = {
+  steps: PropTypes.arrayOf(PropTypes.shape({
+    label: PropTypes.string.isRequired,
+    status: PropTypes.string.isRequired,
+  })).isRequired,
+}
+
+export default memo(ProgressSteps)

@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Chip, LinearProgress } from '@mui/material'
 import { AlertTriangle, CheckCircle2, Clock8, Loader2, MapPin, ThermometerSun } from 'lucide-react'
+
+const TRUCK_ID = 'TRUCK-01'
+const ROUTE_ENDPOINT = `/api/ops/routes/${TRUCK_ID}/today`
 
 export default function CollectorView() {
   const [stops, setStops] = useState([])
@@ -14,7 +17,7 @@ export default function CollectorView() {
       try {
         setLoading(true)
         setBanner(null)
-        const response = await fetch('/api/ops/routes/TRUCK-01/today')
+        const response = await fetch(ROUTE_ENDPOINT)
         if (!response.ok) {
           throw new Error(`Route fetch failed with status ${response.status}`)
         }
@@ -32,14 +35,14 @@ export default function CollectorView() {
     return () => { isMounted = false }
   }, [])
 
-  async function markCollected(binId) {
+  const markCollected = useCallback(async binId => {
     try {
       setPendingBin(binId)
       setBanner(null)
       const res = await fetch('/api/ops/collections', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ binId, truckId: 'TRUCK-01' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ binId, truckId: TRUCK_ID }),
       })
       if (!res.ok) {
         setBanner({ tone: 'error', message: 'Could not mark as collected. Check connectivity and retry.' })
@@ -52,7 +55,7 @@ export default function CollectorView() {
     } finally {
       setPendingBin('')
     }
-  }
+  }, [])
 
   const completed = useMemo(() => stops.filter(stop => stop.visited).length, [stops])
   const totalStops = stops.length

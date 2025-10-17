@@ -1,13 +1,15 @@
+import PropTypes from 'prop-types'
+import { memo } from 'react'
 import { Button, MenuItem, Select } from '@mui/material'
 
-export default function ZoneSelector({
+function ZoneSelector({
   cities,
   selectedCity,
   zoneDetails,
   onSelectCity,
   onGenerate,
   loading,
-  actionLabel = 'Generate Optimized Route',
+  actionLabel,
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm">
@@ -59,3 +61,28 @@ export default function ZoneSelector({
     </div>
   )
 }
+
+ZoneSelector.propTypes = {
+  cities: PropTypes.arrayOf(PropTypes.shape({
+    name: PropTypes.string.isRequired,
+  })).isRequired,
+  selectedCity: PropTypes.string,
+  zoneDetails: PropTypes.shape({
+    totalBins: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    areaSize: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    population: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+    lastCollection: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }).isRequired,
+  onSelectCity: PropTypes.func.isRequired,
+  onGenerate: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
+  actionLabel: PropTypes.string,
+}
+
+ZoneSelector.defaultProps = {
+  selectedCity: '',
+  loading: false,
+  actionLabel: 'Generate Optimized Route',
+}
+
+export default memo(ZoneSelector)

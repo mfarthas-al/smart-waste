@@ -1,5 +1,6 @@
 import { MapContainer, TileLayer, Rectangle, Popup, useMap } from 'react-leaflet'
-import { useEffect } from 'react'
+import { memo, useEffect, useMemo } from 'react'
+import PropTypes from 'prop-types'
 import L from 'leaflet'
 
 function Fit({ bbox }) {
@@ -12,14 +13,20 @@ function Fit({ bbox }) {
   return null
 }
 
-export default function MiniZoneMap({ cities, selectedCity, onSelectCity }) {
-  const active = cities.find(city => city.name === selectedCity)
+Fit.propTypes = {
+  bbox: PropTypes.array,
+}
+
+const DEFAULT_CENTER = Object.freeze([6.927, 79.861])
+
+function MiniZoneMap({ cities, selectedCity, onSelectCity }) {
+  const active = useMemo(() => cities.find(city => city.name === selectedCity), [cities, selectedCity])
   const defaultBBox = active?.bbox || cities[0]?.bbox
 
   return (
     <div className="h-64 overflow-hidden rounded-2xl border border-slate-200">
       <MapContainer
-        center={[6.927, 79.861]}
+        center={DEFAULT_CENTER}
         zoom={12}
         scrollWheelZoom={false}
         style={{ height: '100%', width: '100%' }}
@@ -49,3 +56,22 @@ export default function MiniZoneMap({ cities, selectedCity, onSelectCity }) {
     </div>
   )
 }
+
+MiniZoneMap.propTypes = {
+  cities: PropTypes.arrayOf(PropTypes.shape({
+    name: PropTypes.string.isRequired,
+    bbox: PropTypes.array,
+    depot: PropTypes.shape({
+      lat: PropTypes.number.isRequired,
+      lon: PropTypes.number.isRequired,
+    }).isRequired,
+  })).isRequired,
+  selectedCity: PropTypes.string,
+  onSelectCity: PropTypes.func.isRequired,
+}
+
+MiniZoneMap.defaultProps = {
+  selectedCity: '',
+}
+
+export default memo(MiniZoneMap)

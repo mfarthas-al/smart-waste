@@ -1,7 +1,8 @@
 // RouteMap.jsx
-import { useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { useEffect, useMemo } from 'react'
+import PropTypes from 'prop-types'
+import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
+import L from 'leaflet'
 
 // simple numbered marker with Tailwind-like styles (works without Tailwind too)
 function numberIcon(n, color = '#10b981') {
@@ -35,13 +36,17 @@ function depotIcon() {
 }
 
 function FitBounds({ points }) {
-  const map = useMap();
+  const map = useMap()
   useEffect(() => {
-    if (!points?.length) return;
-    const b = L.latLngBounds(points);
-    map.fitBounds(b, { padding: [30, 30] });
-  }, [points, map]);
-  return null;
+    if (!points?.length) return
+    const bounds = L.latLngBounds(points)
+    map.fitBounds(bounds, { padding: [30, 30] })
+  }, [points, map])
+  return null
+}
+
+FitBounds.propTypes = {
+  points: PropTypes.arrayOf(PropTypes.arrayOf(PropTypes.number)).isRequired,
 }
 
 /**
@@ -49,21 +54,23 @@ function FitBounds({ points }) {
  *  - plan: { stops:[{lat,lon,binId,estKg,visited}], ... }
  *  - depot: { lat, lon }
  */
-const DEFAULT_DEPOT = { lat: 6.927, lon: 79.861 };
+const DEFAULT_DEPOT = Object.freeze({ lat: 6.927, lon: 79.861 })
 
 export default function RouteMap({ plan, depot }) {
-  const baseDepot = depot || plan?.depot || DEFAULT_DEPOT;
-  const stops = plan?.stops ?? [];
+  const baseDepot = depot || plan?.depot || DEFAULT_DEPOT
+  const stops = plan?.stops ?? []
   const poly = useMemo(() => {
     if (!stops.length) {
-      return [[baseDepot.lat, baseDepot.lon]];
+      return [[baseDepot.lat, baseDepot.lon]]
     }
-    const pts = [[baseDepot.lat, baseDepot.lon], ...stops.map(s => [s.lat, s.lon]), [baseDepot.lat, baseDepot.lon]];
-    return pts;
-  }, [stops, baseDepot]);
+    const pts = [[baseDepot.lat, baseDepot.lon], ...stops.map(s => [s.lat, s.lon]), [baseDepot.lat, baseDepot.lon]]
+    return pts
+  }, [stops, baseDepot])
 
   // center (fallback to depot)
-  const center = [baseDepot.lat, baseDepot.lon];
+  const center = [baseDepot.lat, baseDepot.lon]
+
+  const hasStops = stops.length >= 1
 
   return (
     <div className="h-[420px] w-full overflow-hidden rounded-2xl ring-1 ring-slate-200">
@@ -74,7 +81,7 @@ export default function RouteMap({ plan, depot }) {
         />
 
         {/* Path depot → stops → depot */}
-        {stops.length >= 1 && (
+        {hasStops && (
           <Polyline positions={poly} pathOptions={{ color: '#10b981', weight: 5, opacity: 0.8 }} />
         )}
 
@@ -93,7 +100,9 @@ export default function RouteMap({ plan, depot }) {
             <Popup>
               <div style={{ fontWeight: 600 }}>{s.binId}</div>
               <div style={{ fontSize: 12, color: '#475569' }}>
-                {s.lat.toFixed(4)}, {s.lon.toFixed(4)}<br/>
+                {typeof s.lat === 'number' && typeof s.lon === 'number'
+                  ? `${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}`
+                  : 'Location pending'}<br/>
                 {s.estKg} kg {s.visited ? '• visited' : ''}
               </div>
             </Popup>
@@ -104,5 +113,30 @@ export default function RouteMap({ plan, depot }) {
         <FitBounds points={poly} />
       </MapContainer>
     </div>
-  );
+  )
+}
+
+RouteMap.propTypes = {
+  plan: PropTypes.shape({
+    depot: PropTypes.shape({
+      lat: PropTypes.number,
+      lon: PropTypes.number,
+    }),
+    stops: PropTypes.arrayOf(PropTypes.shape({
+      binId: PropTypes.string.isRequired,
+      lat: PropTypes.number,
+      lon: PropTypes.number,
+      estKg: PropTypes.number,
+      visited: PropTypes.bool,
+    })),
+  }),
+  depot: PropTypes.shape({
+    lat: PropTypes.number,
+    lon: PropTypes.number,
+  }),
+}
+
+RouteMap.defaultProps = {
+  plan: null,
+  depot: null,
 }
