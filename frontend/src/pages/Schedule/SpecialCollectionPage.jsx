@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material'
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, TextField, Typography, Stepper, Step, StepLabel, Tooltip } from '@mui/material'
 import { CalendarClock, CheckCircle2, Clock3, Info, MailCheck, RefreshCcw, Truck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -190,24 +190,33 @@ function RequestForm({
   availabilityLoading,
   isAuthenticated,
   onRequireAuth,
+  errors,
+  touched,
+  onBlur,
+  onReset,
+  isFormValid,
 }) {
   return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
-      <CardContent>
+    <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
         <Stack component="form" spacing={4} onSubmit={onSubmit}>
           <Typography variant="h6" fontWeight={600}>
             Request details
           </Typography>
 
-          <Grid container spacing={3}>
+          <Box sx={{ px: { xs: 1.5, md: 1.5 } }}>
+            <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <TextField
                 label="Resident name"
                 name="residentName"
                 value={form.residentName}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 fullWidth
+                error={Boolean(touched.residentName && errors.residentName)}
+                helperText={touched.residentName && errors.residentName}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -216,8 +225,11 @@ function RequestForm({
                 name="ownerName"
                 value={form.ownerName}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 fullWidth
+                error={Boolean(touched.ownerName && errors.ownerName)}
+                helperText={touched.ownerName && errors.ownerName}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -227,8 +239,11 @@ function RequestForm({
                 type="email"
                 value={form.email}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 fullWidth
+                error={Boolean(touched.email && errors.email)}
+                helperText={touched.email && errors.email}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -237,8 +252,13 @@ function RequestForm({
                 name="phone"
                 value={form.phone}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 fullWidth
+                type="tel"
+                inputProps={{ pattern: "[0-9+\\-()\\s]{7,}" }}
+                error={Boolean(touched.phone && errors.phone)}
+                helperText={touched.phone && errors.phone}
               />
             </Grid>
             <Grid item xs={12}>
@@ -247,8 +267,13 @@ function RequestForm({
                 name="address"
                 value={form.address}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 fullWidth
+                multiline
+                minRows={2}
+                error={Boolean(touched.address && errors.address)}
+                helperText={touched.address && errors.address}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -257,8 +282,11 @@ function RequestForm({
                 name="district"
                 value={form.district}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 fullWidth
+                error={Boolean(touched.district && errors.district)}
+                helperText={touched.district && errors.district}
               />
             </Grid>
             <Grid item xs={12} md={4}>
@@ -287,9 +315,12 @@ function RequestForm({
                 type="number"
                 value={form.approxWeight}
                 onChange={onChange}
+                onBlur={onBlur}
                 inputProps={{ min: 0, step: 0.1 }}
                 required
                 fullWidth
+                error={Boolean(touched.approxWeight && errors.approxWeight)}
+                helperText={touched.approxWeight && errors.approxWeight}
               />
             </Grid>
             <Grid item xs={12} md={4}>
@@ -299,9 +330,12 @@ function RequestForm({
                 type="number"
                 value={form.quantity}
                 onChange={onChange}
+                onBlur={onBlur}
                 inputProps={{ min: 1 }}
                 required
                 fullWidth
+                error={Boolean(touched.quantity && errors.quantity)}
+                helperText={touched.quantity && errors.quantity}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -311,10 +345,13 @@ function RequestForm({
                 type="date"
                 value={form.preferredDate}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 InputLabelProps={{ shrink: true }}
                 inputProps={{ min: toLocalDateValue(new Date()) }}
                 fullWidth
+                error={Boolean(touched.preferredDate && errors.preferredDate)}
+                helperText={touched.preferredDate && errors.preferredDate}
               />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -324,10 +361,13 @@ function RequestForm({
                 type="time"
                 value={form.preferredTime}
                 onChange={onChange}
+                onBlur={onBlur}
                 required
                 InputLabelProps={{ shrink: true }}
                 inputProps={{ step: 900 }}
                 fullWidth
+                error={Boolean(touched.preferredTime && errors.preferredTime)}
+                helperText={touched.preferredTime && errors.preferredTime}
               />
             </Grid>
             <Grid item xs={12}>
@@ -336,12 +376,14 @@ function RequestForm({
                 name="specialNotes"
                 value={form.specialNotes}
                 onChange={onChange}
+                onBlur={onBlur}
                 multiline
                 minRows={3}
                 fullWidth
               />
             </Grid>
-          </Grid>
+            </Grid>
+          </Box>
 
           {selectedPolicy?.description ? (
             <Alert severity="info" icon={<Info size={18} />}>
@@ -349,19 +391,28 @@ function RequestForm({
             </Alert>
           ) : null}
 
+          <Box sx={{ flexGrow: 1 }} />
+
           <Stack direction="row" flexWrap="wrap" spacing={2} alignItems="center">
-            <Button
-              type="submit"
-              variant="contained"
-              disabled={!isAuthenticated || availabilityLoading}
-            >
-              {availabilityLoading ? 'Checking…' : 'Check availability'}
-            </Button>
+            <Tooltip title={!isAuthenticated ? 'Please sign in to continue' : (!isFormValid ? 'Please complete required fields' : '')}>
+              <span>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={!isAuthenticated || availabilityLoading || !isFormValid}
+                >
+                  {availabilityLoading ? 'Checking…' : 'Check availability'}
+                </Button>
+              </span>
+            </Tooltip>
             {!isAuthenticated && (
               <Button variant="outlined" onClick={onRequireAuth}>
                 Sign in to continue
               </Button>
             )}
+            <Button variant="text" color="inherit" onClick={onReset} disabled={availabilityLoading}>
+              Reset form
+            </Button>
           </Stack>
         </Stack>
       </CardContent>
@@ -379,8 +430,8 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
   if (!availability) return null
 
   return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
-      <CardContent>
+    <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
         <Stack spacing={3}>
           <Stack direction="row" alignItems="center" spacing={2}>
             <CalendarClock className="h-5 w-5 text-brand-600" />
@@ -496,8 +547,8 @@ function PaymentSummary({ payment, showBreakdown = false }) {
   const total = Number(payment?.amount ?? 0)
 
   return (
-    <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
-      <CardContent>
+    <Card className="rounded-3xl border border-slate-200/70 shadow-sm" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 2, flexGrow: 1 }}>
         <Stack spacing={2.5}>
           <Typography variant="h6" fontWeight={600}>
             Payment details
@@ -720,6 +771,29 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const [bookingInFlight, setBookingInFlight] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const [formError, setFormError] = useState(null)
+  const [touched, setTouched] = useState({})
+
+  // Basic client-side validation for better UX
+  const formErrors = useMemo(() => {
+    const errs = {}
+    const emailRegex = /.+@.+\..+/
+    const qty = Number(form.quantity)
+    const weight = Number(form.approxWeight)
+    if (!form.residentName?.trim()) errs.residentName = 'Resident name is required'
+    if (!form.ownerName?.trim()) errs.ownerName = "Owner's name is required"
+    if (!form.email?.trim()) errs.email = 'Email is required'
+    else if (!emailRegex.test(form.email)) errs.email = 'Enter a valid email address'
+    if (!form.phone?.trim()) errs.phone = 'Phone number is required'
+    if (!form.address?.trim()) errs.address = 'Address is required'
+    if (!form.district?.trim()) errs.district = 'District is required'
+    if (!form.itemType) errs.itemType = 'Item type is required'
+    if (!form.preferredDate) errs.preferredDate = 'Date is required'
+    if (!form.preferredTime) errs.preferredTime = 'Time is required'
+    if (!Number.isFinite(qty) || qty < 1) errs.quantity = 'Quantity must be at least 1'
+    if (!Number.isFinite(weight) || weight <= 0) errs.approxWeight = 'Weight must be greater than 0'
+    return errs
+  }, [form])
+  const isFormValid = useMemo(() => Object.keys(formErrors).length === 0, [formErrors])
 
   const selectedPolicy = useMemo(
     () => allowedItems.find(item => item.id === form.itemType),
@@ -743,6 +817,18 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     setAvailability(null)
     setFormError(null)
   }, [])
+
+  const handleFormBlur = useCallback(event => {
+    const { name } = event.target
+    setTouched(prev => ({ ...prev, [name]: true }))
+  }, [])
+
+  const handleResetForm = useCallback(() => {
+    setForm({ ...initialFormState, ...sessionDefaults })
+    setTouched({})
+    setAvailability(null)
+    setFormError(null)
+  }, [sessionDefaults])
 
   const ensureAuthenticated = useCallback(() => {
     navigate('/login')
@@ -770,6 +856,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
 
     const failedCheck = requiredChecks.find(check => !check.validate(form[check.field]))
     if (failedCheck) {
+      setTouched(prev => ({ ...prev, [failedCheck.field]: true }))
       setFormError(`Please provide a valid ${failedCheck.label}.`)
       return
     }
@@ -940,6 +1027,8 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     checkAvailability()
   }, [checkAvailability])
 
+  const activeStep = feedback?.type === 'success' ? 2 : availability ? 1 : 0
+
   return (
     <div className="glass-panel mx-auto max-w-6xl rounded-4xl border border-slate-200/60 bg-white/90 p-8 shadow-md">
       <Stack spacing={5}>
@@ -959,6 +1048,20 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           </Typography>
         </Box>
 
+        <Card className="rounded-3xl border border-slate-200/70 shadow-sm">
+          <CardContent>
+            <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+              <Stepper activeStep={activeStep} alternativeLabel>
+                {['Details', 'Availability', 'Confirm'].map(label => (
+                  <Step key={label}>
+                    <StepLabel>{label}</StepLabel>
+                  </Step>
+                ))}
+              </Stepper>
+            </Box>
+          </CardContent>
+        </Card>
+
         {feedback ? (
           <Alert severity={feedback.type} onClose={() => setFeedback(null)}>
             {feedback.message}
@@ -975,21 +1078,33 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
           </Alert>
         ) : null}
 
-        <RequestForm
-          form={form}
-          allowedItems={allowedItems}
-          selectedPolicy={selectedPolicy}
-          onChange={handleFormChange}
-          onSubmit={handleFormSubmit}
-          availabilityLoading={availabilityLoading || configLoading}
-          isAuthenticated={isAuthenticated}
-          onRequireAuth={ensureAuthenticated}
-        />
-
-        <PaymentSummary
-          payment={availability?.payment}
-          showBreakdown={form.approxWeight !== '' && Number(form.quantity) > 0}
-        />
+        <Box sx={{ maxWidth: 1100, mx: 'auto', width: '100%' }}>
+          <Grid container spacing={3} alignItems="stretch">
+            <Grid item xs={12} md={7} sx={{ display: 'flex' }}>
+              <RequestForm
+                form={form}
+                allowedItems={allowedItems}
+                selectedPolicy={selectedPolicy}
+                onChange={handleFormChange}
+                onSubmit={handleFormSubmit}
+                availabilityLoading={availabilityLoading || configLoading}
+                isAuthenticated={isAuthenticated}
+                onRequireAuth={ensureAuthenticated}
+                errors={formErrors}
+                touched={touched}
+                onBlur={handleFormBlur}
+                onReset={handleResetForm}
+                isFormValid={isFormValid}
+              />
+            </Grid>
+            <Grid item xs={12} md={5} sx={{ display: 'flex' }}>
+              <PaymentSummary
+                payment={availability?.payment}
+                showBreakdown={form.approxWeight !== '' && Number(form.quantity) > 0}
+              />
+            </Grid>
+          </Grid>
+        </Box>
 
         <AvailabilitySection
           availability={availability}
