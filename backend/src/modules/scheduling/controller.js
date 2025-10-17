@@ -7,6 +7,7 @@ const Bill = require('../../models/Bill');
 const {
   sendSpecialCollectionConfirmation,
   notifyAuthorityOfSpecialPickup,
+  sanitizeMetadata,
 } = require('../../services/mailer');
 const { generateSpecialCollectionReceipt } = require('./receipt');
 
@@ -740,7 +741,7 @@ async function startCheckout(req, res, next) {
       return respondWithError(res, 409, 'This slot has just been booked. Please choose another slot.');
     }
 
-    const metadata = {
+    const metadata = sanitizeMetadata({
       userId: user._id.toString(),
       itemType: payload.itemType,
       itemLabel: policy.label,
@@ -759,14 +760,6 @@ async function startCheckout(req, res, next) {
       baseCharge: payment.baseCharge != null ? String(payment.baseCharge) : undefined,
       taxCharge: payment.taxCharge != null ? String(payment.taxCharge) : undefined,
       specialNotes: payload.specialNotes,
-    };
-
-    Object.keys(metadata).forEach(key => {
-      if (metadata[key] === undefined || metadata[key] === null) {
-        delete metadata[key];
-      } else {
-        metadata[key] = String(metadata[key]).slice(0, 500);
-      }
     });
 
     const session = await stripe.checkout.sessions.create({

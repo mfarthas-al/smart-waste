@@ -1,11 +1,21 @@
 const PDFDocument = require('pdfkit');
 
+const DEFAULT_TIMEZONE = 'Asia/Colombo';
+
 const currencyFormatter = new Intl.NumberFormat('en-LK', {
   style: 'currency',
   currency: 'LKR',
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const toLocale = (value, options) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return date.toLocaleString('en-GB', { timeZone: DEFAULT_TIMEZONE, ...options });
+};
 
 function formatCurrency(amount) {
   const value = Number(amount);
@@ -16,38 +26,28 @@ function formatCurrency(amount) {
 }
 
 function toLocalDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('en-GB', {
+  return toLocale(value, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-    timeZone: 'Asia/Colombo',
-  });
+  }) || '—';
 }
 
 function toLocalTime(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleTimeString('en-GB', {
+  return toLocale(value, {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: 'Asia/Colombo',
-  });
+  }) || '—';
 }
 
 function toIssuedTimestamp(value) {
-  const date = value instanceof Date ? value : new Date(value);
-  return date.toLocaleString('en-GB', {
+  return toLocale(value, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    timeZone: 'Asia/Colombo',
   });
 }
 
@@ -63,6 +63,9 @@ function writeKeyValue(doc, label, value, options = {}) {
 async function generateSpecialCollectionReceipt({ request, slot, issuedAt = new Date() }) {
   const doc = new PDFDocument({ margin: 48, size: 'A4' });
   const chunks = [];
+
+  // Establishes consistent formatting helpers to keep the PDF output legible.
+  const ensureNumber = input => (Number.isFinite(Number(input)) ? Number(input) : null);
 
   const reference = request._id?.toString?.() || request.id || 'N/A';
   const company = {
@@ -109,11 +112,13 @@ async function generateSpecialCollectionReceipt({ request, slot, issuedAt = new 
   doc.text(`Owner: ${request.ownerName || '—'}`);
   doc.text(`Item type: ${request.itemLabel || request.itemType || '—'}`);
   doc.text(`Quantity: ${request.quantity ?? '—'}`);
-  if (request.approxWeightKg) {
-    doc.text(`Approx. weight per item: ${Number(request.approxWeightKg).toFixed(1)} kg`);
+  const approxWeight = ensureNumber(request.approxWeightKg);
+  if (approxWeight !== null) {
+    doc.text(`Approx. weight per item: ${approxWeight.toFixed(1)} kg`);
   }
-  if (request.totalWeightKg) {
-    doc.text(`Estimated total weight: ${Number(request.totalWeightKg).toFixed(1)} kg`);
+  const totalWeight = ensureNumber(request.totalWeightKg);
+  if (totalWeight !== null) {
+    doc.text(`Estimated total weight: ${totalWeight.toFixed(1)} kg`);
   }
   doc.text(`Scheduled date: ${toLocalDate(slot?.start)}`);
   doc.text(`Scheduled time: ${toLocalTime(slot?.start)} - ${toLocalTime(slot?.end)}`);
