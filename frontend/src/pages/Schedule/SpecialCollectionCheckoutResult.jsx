@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Box, Button, Card, CardContent, CircularProgress, Stack, Typography } from '@mui/material'
-import { CheckCircle2, Clock3, XCircle } from 'lucide-react'
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Divider, Stack, Typography } from '@mui/material'
+import { CheckCircle2, Clock3, Download, XCircle } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 function formatSlotTime(slot) {
@@ -16,6 +16,43 @@ function formatSlotTime(slot) {
     }
 }
 
+function formatWeight(value) {
+    const num = Number(value)
+    if (!Number.isFinite(num)) return null
+    return `${num.toFixed(1)} kg`
+}
+
+const currencyFormatter = new Intl.NumberFormat('en-LK', {
+    style: 'currency',
+    currency: 'LKR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+})
+
+function formatCurrency(amount) {
+    const value = Number(amount)
+    if (!Number.isFinite(value)) {
+        return currencyFormatter.format(0)
+    }
+    return currencyFormatter.format(value)
+}
+
+function DetailRow({ label, value }) {
+    if (value === null || value === undefined || value === '') {
+        return null
+    }
+    return (
+        <Stack spacing={0.25}>
+            <Typography variant="caption" color="text.secondary">
+                {label}
+            </Typography>
+            <Typography variant="body2" fontWeight={600} color="text.primary">
+                {value}
+            </Typography>
+        </Stack>
+    )
+}
+
 export default function SpecialCollectionCheckoutResult({ session }) {
     const location = useLocation()
     const navigate = useNavigate()
@@ -24,6 +61,7 @@ export default function SpecialCollectionCheckoutResult({ session }) {
     const sessionId = search.get('session_id')
 
     const [state, setState] = useState({ loading: true, error: null, request: null, paymentStatus: redirectStatus || 'pending' })
+    const [downloadPending, setDownloadPending] = useState(false)
 
     useEffect(() => {
         if (!sessionId) {
@@ -94,6 +132,69 @@ export default function SpecialCollectionCheckoutResult({ session }) {
 
     const { loading, error, request, paymentStatus } = state
     const isSuccess = paymentStatus === 'success' && request
+    const slotStart = request?.slot?.start ? new Date(request.slot.start) : null
+    const scheduledDate = slotStart
+        ? slotStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        : '—'
+    const scheduledTime = slotStart
+        ? slotStart.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : '—'
+    const itemLabel = request?.itemLabel || request?.itemType || 'Special collection'
+    const subtotal = request?.paymentSubtotal ?? request?.paymentAmount ?? 0
+    const extraCharge = request?.paymentWeightCharge ?? 0
+    const taxCharge = request?.paymentTaxCharge ?? 0
+    const totalPaid = request?.paymentAmount ?? 0
+    const approxWeightDisplay = request?.approxWeightKg ? `${formatWeight(request.approxWeightKg)} per item` : null
+    const totalWeightDisplay = request?.totalWeightKg ? formatWeight(request.totalWeightKg) : null
+
+    const handleDownloadReceipt = async () => {
+        if (!request) return
+
+        const requestId = request._id || request.id
+        const userId = session?.id || session?._id || request.userId
+
+        if (!requestId || !userId) {
+            window.alert('We could not verify your session. Please sign in again to download the receipt.')
+            return
+        }
+
+        try {
+            setDownloadPending(true)
+            const response = await fetch(`/api/schedules/special/requests/${requestId}/receipt?userId=${encodeURIComponent(userId)}`, {
+                headers: {
+                    Accept: 'application/pdf',
+                },
+            })
+
+            if (!response.ok) {
+                let message = 'Could not download the receipt. Please try again.'
+                try {
+                    const payload = await response.json()
+                    if (payload?.message) {
+                        message = payload.message
+                    }
+                } catch (parseError) {
+                    console.warn('Failed to parse receipt error payload', parseError)
+                }
+                throw new Error(message)
+            }
+
+            const blob = await response.blob()
+            const url = URL.createObjectURL(blob)
+            const anchor = document.createElement('a')
+            anchor.href = url
+            anchor.download = `special-collection-receipt-${requestId}.pdf`
+            document.body.appendChild(anchor)
+            anchor.click()
+            document.body.removeChild(anchor)
+            URL.revokeObjectURL(url)
+        } catch (error) {
+            console.error('Receipt download failed', error)
+            window.alert(error.message || 'Could not download the receipt. Please try again later.')
+        } finally {
+            setDownloadPending(false)
+        }
+    }
 
     return (
         <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-12">
@@ -117,21 +218,18 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                     )}
 
                     {isSuccess ? (
-                        <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
-                            <CardContent>
-                                <Stack spacing={3}>
-                                    <Stack direction="row" alignItems="center" spacing={2}>
-                                        <CheckCircle2 className="h-6 w-6 text-emerald-500" />
-                                        <Typography variant="h6" fontWeight={600}>
-                                            Payment confirmed and pickup scheduled
-                                        </Typography>
-                                    </Stack>
-                                    <Stack spacing={1}>
-                                        <Typography variant="subtitle1" fontWeight={600}>
-                                            {request.itemType || 'Special collection'}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            Quantity: {request.quantity}
+                        <Stack spacing={3}>
+                            <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
+                                <CardContent>
+                                    <Stack spacing={2.5}>
+                                        <Stack direction="row" alignItems="center" spacing={2}>
+                                            <CheckCircle2 className="h-6 w-6 text-emerald-500" />
+                                            <Typography variant="h6" fontWeight={600}>
+                                                Payment confirmed and pickup scheduled
+                                            </Typography>
+                                        </Stack>
+                                        <Typography variant="body1" color="text.secondary">
+                                            Your slot has been secured and a receipt is available below. Keep this for your records.
                                         </Typography>
                                         <Stack direction="row" spacing={1} alignItems="center">
                                             <Clock3 className="h-4 w-4 text-brand-600" />
@@ -139,20 +237,85 @@ export default function SpecialCollectionCheckoutResult({ session }) {
                                                 {formatSlotTime(request.slot)}
                                             </Typography>
                                         </Stack>
-                                        {typeof request.totalWeightKg === 'number' && request.totalWeightKg > 0 ? (
-                                            <Typography variant="body2" color="text.secondary">
-                                                Estimated total weight: {request.totalWeightKg.toFixed(1)} kg
-                                            </Typography>
-                                        ) : null}
-                                        {request.paymentAmount ? (
-                                            <Typography variant="body2" color="text.secondary">
-                                                Paid amount: LKR {request.paymentAmount.toLocaleString()}
-                                            </Typography>
-                                        ) : null}
                                     </Stack>
-                                </Stack>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="rounded-4xl border border-slate-200/70 shadow-sm">
+                                <CardContent>
+                                    <Stack spacing={3}>
+                                        <Stack spacing={1}>
+                                            <Typography variant="subtitle1" fontWeight={700}>
+                                                Receipt details
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Smart Waste LK special collection booking receipt for {itemLabel}.
+                                            </Typography>
+                                        </Stack>
+
+                                        <Stack spacing={2} direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'stretch', md: 'flex-start' }}>
+                                            <Stack spacing={1.5} flex={1}>
+                                                <Typography variant="subtitle2" color="text.secondary">
+                                                    Service information
+                                                </Typography>
+                                                <DetailRow label="Address" value={request.address} />
+                                                <DetailRow label="District" value={request.district} />
+                                                <DetailRow label="Phone" value={request.contactPhone} />
+                                                <DetailRow label="Email" value={request.contactEmail} />
+                                                <DetailRow label="Item type" value={itemLabel} />
+                                                <DetailRow label="Quantity" value={request.quantity} />
+                                                <DetailRow label="Approx. weight" value={approxWeightDisplay} />
+                                                <DetailRow label="Estimated total weight" value={totalWeightDisplay} />
+                                                <DetailRow label="Scheduled date" value={scheduledDate} />
+                                                <DetailRow label="Scheduled time" value={scheduledTime} />
+                                            </Stack>
+
+                                            <Divider flexItem orientation="vertical" sx={{ display: { xs: 'none', md: 'block' } }} />
+
+                                            <Stack spacing={1.5} flex={1}>
+                                                <Typography variant="subtitle2" color="text.secondary">
+                                                    Payment breakdown
+                                                </Typography>
+                                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        Payment amount
+                                                    </Typography>
+                                                    <Typography variant="subtitle1" fontWeight={700}>
+                                                        {formatCurrency(totalPaid)}
+                                                    </Typography>
+                                                </Stack>
+                                                <Stack spacing={0.75}>
+                                                    <Stack direction="row" justifyContent="space-between">
+                                                        <Typography variant="body2" color="text.secondary">Subtotal</Typography>
+                                                        <Typography variant="body2" fontWeight={600}>{formatCurrency(subtotal)}</Typography>
+                                                    </Stack>
+                                                    <Stack direction="row" justifyContent="space-between">
+                                                        <Typography variant="body2" color="text.secondary">Extra charges</Typography>
+                                                        <Typography variant="body2" fontWeight={600}>{formatCurrency(extraCharge)}</Typography>
+                                                    </Stack>
+                                                    <Stack direction="row" justifyContent="space-between">
+                                                        <Typography variant="body2" color="text.secondary">Tax</Typography>
+                                                        <Typography variant="body2" fontWeight={600}>{formatCurrency(taxCharge)}</Typography>
+                                                    </Stack>
+                                                </Stack>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    Total = Subtotal + Extra charges + Tax
+                                                </Typography>
+                                                <Button
+                                                    variant="outlined"
+                                                    startIcon={<Download />}
+                                                    onClick={handleDownloadReceipt}
+                                                    sx={{ alignSelf: 'flex-start' }}
+                                                    disabled={downloadPending}
+                                                >
+                                                    {downloadPending ? 'Preparing receipt…' : 'Download receipt'}
+                                                </Button>
+                                            </Stack>
+                                        </Stack>
+                                    </Stack>
+                                </CardContent>
+                            </Card>
+                        </Stack>
                     ) : null}
 
                     {!loading && !isSuccess && !error ? (

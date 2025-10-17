@@ -8,6 +8,21 @@ const debugMail = (...args) => {
 
 let transporter;
 
+const currencyFormatter = new Intl.NumberFormat('en-LK', {
+  style: 'currency',
+  currency: 'LKR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatCurrency(amount) {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) {
+    return 'LKR 0.00';
+  }
+  return currencyFormatter.format(value);
+}
+
 function getTransporter() {
   if (transporter) {
     debugMail('Reusing existing transporter');
@@ -74,7 +89,7 @@ async function sendMail(message) {
   }
 }
 
-async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
+async function sendSpecialCollectionConfirmation({ resident, slot, request, receipt }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
   }
@@ -86,33 +101,99 @@ async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
 
   const subject = `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
   const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
+  const scheduledDate = new Date(slot.start).toLocaleDateString('en-GB', { timeZone: 'Asia/Colombo', day: 'numeric', month: 'short', year: 'numeric' });
+  const scheduledTime = new Date(slot.start).toLocaleTimeString('en-GB', { timeZone: 'Asia/Colombo', hour: '2-digit', minute: '2-digit' });
+
+  const subtotal = formatCurrency(request.paymentSubtotal || request.paymentAmount || 0);
+  const extraCharge = formatCurrency(request.paymentWeightCharge || 0);
+  const taxCharge = formatCurrency(request.paymentTaxCharge || 0);
+  const totalCharge = formatCurrency(request.paymentAmount || 0);
 
   const text = [
     `Hello ${resident.name},`,
     '',
     'Your special waste collection has been scheduled successfully.',
-    `Item type: ${request.itemType}`,
-    `Quantity: ${request.quantity}`,
-    `Collection window: ${slotWindow}`,
-    request.paymentRequired ? `Payment amount: LKR ${request.paymentAmount.toLocaleString()}` : 'Payment collected: Not required',
+    receipt?.issuedAt
+      ? `Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+      : null,
+    '',
+    'Pickup details:',
+    `  Address: ${request.address}`,
+    `  District: ${request.district}`,
+    `  Phone: ${request.contactPhone}`,
+    `  Email: ${request.contactEmail}`,
+    `  Item type: ${request.itemLabel || request.itemType}`,
+    `  Quantity: ${request.quantity}`,
+    request.approxWeightKg ? `  Approx. weight per item: ${request.approxWeightKg} kg` : null,
+    request.totalWeightKg ? `  Estimated total weight: ${request.totalWeightKg} kg` : null,
+    `  Scheduled date: ${scheduledDate}`,
+    `  Scheduled time: ${scheduledTime}`,
+    '',
+    'Payment receipt:',
+    `  Subtotal: ${subtotal}`,
+    `  Extra charges: ${extraCharge}`,
+    `  Tax: ${taxCharge}`,
+    `  Total paid: ${totalCharge}`,
     '',
     'If you need to make changes, contact the municipal hotline at 1919.',
     '',
     'Smart Waste LK operations team',
-  ].join('\n');
+  ].filter(line => line !== null && line !== undefined).join('\n');
+
+  const receiptIssuedHtml = receipt?.issuedAt
+    ? `<p style="color:#475569;font-size:12px;">Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}</p>`
+    : '';
 
   const html = `<p>Hello ${resident.name},</p>
   <p>Your special waste collection has been scheduled successfully.</p>
+  ${receiptIssuedHtml}
+  <h3>Pickup details</h3>
   <ul>
-    <li><strong>Item type:</strong> ${request.itemType}</li>
+    <li><strong>Address:</strong> ${request.address}</li>
+    <li><strong>District:</strong> ${request.district}</li>
+    <li><strong>Phone:</strong> ${request.contactPhone}</li>
+    <li><strong>Email:</strong> ${request.contactEmail}</li>
+    <li><strong>Item type:</strong> ${request.itemLabel || request.itemType}</li>
     <li><strong>Quantity:</strong> ${request.quantity}</li>
-    <li><strong>Collection window:</strong> ${slotWindow}</li>
-    <li><strong>Payment:</strong> ${request.paymentRequired ? `LKR ${request.paymentAmount.toLocaleString()}` : 'Not required'}</li>
+    ${request.approxWeightKg ? `<li><strong>Approx. weight per item:</strong> ${request.approxWeightKg} kg</li>` : ''}
+    ${request.totalWeightKg ? `<li><strong>Estimated total weight:</strong> ${request.totalWeightKg} kg</li>` : ''}
+    <li><strong>Scheduled date:</strong> ${scheduledDate} (${slotWindow})</li>
   </ul>
+  <h3>Payment receipt</h3>
+  <table style="border-collapse: collapse;">
+    <tbody>
+      <tr>
+        <td style="padding: 4px 12px 4px 0;">Subtotal</td>
+        <td style="padding: 4px 0; font-weight: 600;">${subtotal}</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 12px 4px 0;">Extra charges</td>
+        <td style="padding: 4px 0; font-weight: 600;">${extraCharge}</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 12px 4px 0;">Tax</td>
+        <td style="padding: 4px 0; font-weight: 600;">${taxCharge}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 12px 4px 0; font-weight: 700;">Total paid</td>
+        <td style="padding: 8px 0; font-weight: 700;">${totalCharge}</td>
+      </tr>
+    </tbody>
+  </table>
   <p>If you need to make changes, contact the municipal hotline at 1919.</p>
   <p>Smart Waste LK operations team</p>`;
 
-  return sendMail({ to: resident.email, subject, text, html });
+  const attachments = receipt?.buffer
+    ? [
+        {
+          filename: receipt.filename || `special-collection-receipt-${request._id || request.id || 'booking'}.pdf`,
+          content: receipt.buffer,
+          contentType: 'application/pdf',
+        },
+      ]
+    : undefined;
+
+  return sendMail({ to: resident.email, subject, text, html, attachments });
 }
 
 async function notifyAuthorityOfSpecialPickup({ request, slot }) {

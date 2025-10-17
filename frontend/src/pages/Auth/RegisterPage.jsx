@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link as RouterLink } from 'react-router-dom'
-import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material'
-import { UserPlus } from 'lucide-react'
+import { Alert, Box, Button, CircularProgress, Checkbox, FormControlLabel, Paper, Stack, TextField, Typography } from '@mui/material'
+import { UserPlus } from 'lucide-react';
 
 export default function RegisterPage({ onRegister }) {
   const navigate = useNavigate()
@@ -19,6 +19,7 @@ export default function RegisterPage({ onRegister }) {
     setFeedback(null)
 
     if (form.password !== form.confirmPassword) {
+
       setFeedback({ type: 'error', message: 'Passwords do not match' })
       return
     }
@@ -121,6 +122,16 @@ export default function RegisterPage({ onRegister }) {
             fullWidth
           />
 
+          <FormControlLabel
+            control={<Checkbox
+              required
+            />}
+            label={
+              <Typography variant="body2">
+                Agree to terms: I confirm that I have read and accept the collection policy and service terms.
+              </Typography>
+            }
+          />
           <Button type="submit" variant="contained" disabled={loading} size="large" fullWidth>
             {loading ? <CircularProgress size={24} color="inherit" /> : 'Create account'}
           </Button>

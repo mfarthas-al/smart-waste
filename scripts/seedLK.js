@@ -131,36 +131,58 @@ const makeCollectionRecords = () => {
       City.deleteMany({}),
       WasteBin.deleteMany({}),
       WasteCollectionRecord.deleteMany({}),
-      User.deleteMany({}),
       Bill.deleteMany({}),
       PaymentTransaction.deleteMany({}),
     ]);
 
-    const [adminHash, collectorHash, residentHash] = await Promise.all([
-      User.hashPassword('Admin@123'),
-      User.hashPassword('Collector@123'),
-      User.hashPassword('Resident@123'),
-    ]);
-    const [adminUser, collectorUser, residentUser] = await User.insertMany([
-      {
+    const ensureSeedUser = async ({ name, email, password, role }) => {
+      const existing = await User.findOne({ email });
+      if (existing) {
+        let dirty = false;
+        if (name && existing.name !== name) {
+          existing.name = name;
+          dirty = true;
+        }
+        if (role && existing.role !== role) {
+          existing.role = role;
+          dirty = true;
+        }
+        if (dirty) {
+          await existing.save();
+        }
+        return existing;
+      }
+
+      const passwordHash = await User.hashPassword(password);
+      return User.create({
+        name,
+        email,
+        passwordHash,
+        role,
+      });
+    };
+
+    const [adminUser, collectorUser, residentUser] = await Promise.all([
+      ensureSeedUser({
         name: 'Nadeesha Perera',
         email: 'admin@smartwaste.lk',
-        passwordHash: adminHash,
+        password: 'Admin@123',
         role: 'admin',
-      },
-      {
+      }),
+      ensureSeedUser({
         name: 'Chamika Fernando',
         email: 'collector@smartwaste.lk',
-        passwordHash: collectorHash,
+        password: 'Collector@123',
         role: 'regular',
-      },
-      {
+      }),
+      ensureSeedUser({
         name: 'Ishara Silva',
         email: 'resident@smartwaste.lk',
-        passwordHash: residentHash,
+        password: 'Resident@123',
         role: 'regular',
-      },
+      }),
     ]);
+    console.log('✅ Ensured admin, collector, and resident seed users exist');
 
     console.log('✅ Seeded admin and regular users');
 

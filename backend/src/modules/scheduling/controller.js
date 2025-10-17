@@ -7,6 +7,7 @@ const {
   sendSpecialCollectionConfirmation,
   notifyAuthorityOfSpecialPickup,
 } = require('../../services/mailer');
+const { generateSpecialCollectionReceipt } = require('./receipt');
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
@@ -265,6 +266,7 @@ async function finaliseBooking({
   paymentReference,
   paymentDoc,
   provider = 'internal',
+  itemPolicy,
 }) {
   const existing = await SpecialCollectionRequest.countDocuments({
     'slot.slotId': slot.slotId,
@@ -294,6 +296,7 @@ async function finaliseBooking({
       : undefined,
     specialNotes: payload.specialNotes?.trim(),
     itemType: payload.itemType,
+    itemLabel: itemPolicy?.label,
     quantity: payload.quantity,
     preferredDateTime: toDate(payload.preferredDateTime),
     slot,
@@ -301,11 +304,27 @@ async function finaliseBooking({
     paymentRequired: payment.required,
     paymentStatus: payment.required ? 'success' : 'not-required',
     paymentAmount: payment.amount,
+    paymentSubtotal: payment.baseCharge,
+    paymentWeightCharge: payment.weightCharge,
+    paymentTaxCharge: payment.taxCharge,
     paymentReference,
     notifications: {},
   });
 
+  const issuedAt = new Date();
+  let receiptBuffer = null;
+
   if (payment.required) {
+    try {
+      receiptBuffer = await generateSpecialCollectionReceipt({
+        request: requestDoc.toObject(),
+        slot,
+        issuedAt,
+      });
+    } catch (receiptError) {
+      console.warn('⚠️ Failed to generate special collection receipt PDF', receiptError);
+    }
+
     const paymentPayload = {
       requestId: requestDoc._id,
       userId: user._id,
@@ -319,6 +338,7 @@ async function finaliseBooking({
       metadata: {
         ...(paymentDoc?.metadata || {}),
         itemType: payload.itemType,
+        itemLabel: itemPolicy?.label,
         quantity: payload.quantity,
         preferredDateTime: payload.preferredDateTime,
         residentName: payload.residentName,
@@ -352,6 +372,13 @@ async function finaliseBooking({
         resident: { email: user.email, name: user.name },
         slot,
         request: requestDoc,
+        receipt: receiptBuffer
+          ? {
+              buffer: receiptBuffer,
+              filename: `special-collection-receipt-${requestDoc._id}.pdf`,
+              issuedAt,
+            }
+          : undefined,
       }).catch(error => {
         console.warn('⚠️ Failed to email resident about special collection', error);
         return { sent: false };
@@ -502,6 +529,7 @@ async function confirmBooking(req, res, next) {
       paymentReference: payment.required ? (payload.paymentReference || `PAY-${Date.now()}`) : undefined,
       paymentDoc: null,
       provider: 'internal-simulator',
+      itemPolicy: policy,
     });
 
     return res.status(201).json({
@@ -575,6 +603,7 @@ async function startCheckout(req, res, next) {
     const metadata = {
       userId: user._id.toString(),
       itemType: payload.itemType,
+      itemLabel: policy.label,
       quantity: String(payload.quantity),
       preferredDateTime: preferred.toISOString(),
       slotId: slot.slotId,
@@ -765,6 +794,15 @@ async function syncCheckout(req, res, next) {
     }
 
     const user = await resolveUser(paymentDoc.userId.toString());
+    if (!payment.required) {
+      await SpecialCollectionPayment.updateOne({ _id: paymentDoc._id }, {
+        $set: {
+          status: 'failed',
+          reference: paymentIntent?.id || sessionId,
+        },
+      });
+      return res.status(400).json({ ok: false, message: 'Payment metadata indicates zero amount. Please contact support.' });
+    }
     const requestDoc = await finaliseBooking({
       user,
       payload,
@@ -773,6 +811,7 @@ async function syncCheckout(req, res, next) {
       paymentReference: paymentIntent?.id || sessionId,
       paymentDoc,
       provider: 'stripe',
+      itemPolicy: policy,
     });
 
     return res.json({
@@ -824,6 +863,39 @@ async function listUserRequests(req, res, next) {
   }
 }
 
+async function downloadReceipt(req, res, next) {
+  try {
+    const { requestId } = z.object({ requestId: z.string().min(1) }).parse(req.params);
+    const { userId } = z.object({ userId: z.string().min(1) }).parse(req.query);
+
+    await resolveUser(userId);
+
+    const requestDoc = await SpecialCollectionRequest.findById(requestId).lean();
+    if (!requestDoc) {
+      return res.status(404).json({ ok: false, message: 'Receipt not found. Please refresh your bookings.' });
+    }
+
+    if (requestDoc.userId?.toString?.() !== userId) {
+      return res.status(403).json({ ok: false, message: 'You are not authorised to download this receipt.' });
+    }
+
+    const buffer = await generateSpecialCollectionReceipt({
+      request: requestDoc,
+      slot: requestDoc.slot,
+      issuedAt: new Date(),
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="special-collection-receipt-${requestId}.pdf"`);
+    return res.send(buffer);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, message: error.errors[0]?.message || 'Invalid request' });
+    }
+    return next(error);
+  }
+}
+
 module.exports = {
   getConfig,
   checkAvailability,
@@ -831,4 +903,5 @@ module.exports = {
   startCheckout,
   syncCheckout,
   listUserRequests,
+  downloadReceipt,
 };
