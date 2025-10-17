@@ -68,7 +68,11 @@ const defaultUser = {
 	isActive: true,
 };
 
-const futureISO = () => new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const futureISO = () => {
+	const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
+	date.setHours(10, 0, 0, 0);
+	return date.toISOString();
+};
 
 const createRequestDoc = overrides => ({
 	_id: 'req-1',
@@ -117,6 +121,37 @@ const responseFactory = () => {
 		}),
 	};
 	return res;
+};
+
+const buildAvailabilityPayload = overrides => ({
+	userId: defaultUser._id,
+	itemType: 'furniture',
+	quantity: 1,
+	preferredDateTime: futureISO(),
+	residentName: 'Resident',
+	ownerName: 'Owner',
+	address: '123 Street',
+	district: 'Colombo',
+	email: 'resident@example.com',
+	phone: '0771234567',
+	approxWeight: 15,
+	specialNotes: 'Handle carefully',
+	...overrides,
+});
+
+const acquireFirstAvailableSlot = async overrides => {
+	const payload = buildAvailabilityPayload(overrides);
+	const res = responseFactory();
+
+	await controller.checkAvailability({ body: payload }, res, jest.fn());
+
+	const [firstSlot] = res.body?.slots || [];
+	if (!firstSlot) {
+		const { statusCode, body } = res;
+		throw new Error(`Test setup failed to acquire an available slot. status=${statusCode} body=${JSON.stringify(body)}`);
+	}
+
+	return { slotId: firstSlot.slotId, payload, slots: res.body.slots };
 };
 
 const resetMocks = () => {
@@ -326,24 +361,14 @@ describe('confirmBooking', () => {
 	});
 
 	it('creates booking when payment not required', async () => {
+		const { slotId, payload } = await acquireFirstAvailableSlot({
+			itemType: 'yard',
+			quantity: 1,
+			approxWeight: null,
+			specialNotes: 'Leave at gate',
+		});
 		const res = responseFactory();
-		const req = {
-			body: {
-				userId: 'user-1',
-				itemType: 'yard',
-				quantity: 1,
-				preferredDateTime: futureISO(),
-				slotId: 'slot-1',
-				residentName: 'Resident',
-				ownerName: 'Owner',
-				address: '123 Street',
-				district: 'Colombo',
-				email: 'resident@example.com',
-				phone: '0771234567',
-				approxWeight: null,
-				specialNotes: 'Leave at gate',
-			},
-		};
+		const req = { body: { ...payload, slotId } };
 
 		await controller.confirmBooking(req, res, jest.fn());
 
@@ -409,24 +434,19 @@ describe('startCheckout', () => {
 
 	it('returns checkout session data', async () => {
 		await loadController({ stripeEnabled: true });
+		const { slotId, payload } = await acquireFirstAvailableSlot({
+			itemType: 'e-waste',
+			quantity: 2,
+			approxWeight: 15,
+			specialNotes: 'Fragile',
+		});
 		const res = responseFactory();
 		const req = {
 			body: {
-				userId: 'user-1',
-				itemType: 'e-waste',
-				quantity: 2,
-				preferredDateTime: futureISO(),
-				slotId: 'slot-1',
-				residentName: 'Resident',
-				ownerName: 'Owner',
-				address: '123 Street',
-				district: 'Colombo',
-				email: 'resident@example.com',
-				phone: '0771234567',
-				approxWeight: 15,
+				...payload,
+				slotId,
 				successUrl: 'https://app.test/success',
 				cancelUrl: 'https://app.test/cancel',
-				specialNotes: 'Fragile',
 			},
 		};
 
@@ -442,22 +462,17 @@ describe('startCheckout', () => {
 	});
 
 	it('detects when slot just became full', async () => {
+		const { slotId, payload } = await acquireFirstAvailableSlot({
+			itemType: 'e-waste',
+			quantity: 1,
+			approxWeight: 12,
+		});
 		mockRequestModel.countDocuments.mockResolvedValue(3);
 		const res = responseFactory();
 		const req = {
 			body: {
-				userId: 'user-1',
-				itemType: 'e-waste',
-				quantity: 1,
-				preferredDateTime: futureISO(),
-				slotId: 'slot-1',
-				residentName: 'Resident',
-				ownerName: 'Owner',
-				address: '123 Street',
-				district: 'Colombo',
-				email: 'resident@example.com',
-				phone: '0771234567',
-				approxWeight: 12,
+				...payload,
+				slotId,
 				successUrl: 'https://app.test/success',
 				cancelUrl: 'https://app.test/cancel',
 			},
@@ -470,21 +485,16 @@ describe('startCheckout', () => {
 	});
 
 	it('notes when payment not required', async () => {
+		const { slotId, payload } = await acquireFirstAvailableSlot({
+			itemType: 'yard',
+			quantity: 1,
+			approxWeight: null,
+		});
 		const res = responseFactory();
 		const req = {
 			body: {
-				userId: 'user-1',
-				itemType: 'yard',
-				quantity: 1,
-				preferredDateTime: futureISO(),
-				slotId: 'slot-1',
-				residentName: 'Resident',
-				ownerName: 'Owner',
-				address: '123 Street',
-				district: 'Colombo',
-				email: 'resident@example.com',
-				phone: '0771234567',
-				approxWeight: null,
+				...payload,
+				slotId,
 				successUrl: 'https://app.test/success',
 				cancelUrl: 'https://app.test/cancel',
 			},
@@ -508,21 +518,26 @@ describe('syncCheckout', () => {
 	});
 
 	it('completes booking on successful payment', async () => {
-		const preferredDate = futureISO();
-		const metadata = {
-			slotId: 'slot-1',
+		const { slotId, payload } = await acquireFirstAvailableSlot({
 			itemType: 'e-waste',
-			itemLabel: 'Electronic waste',
-			quantity: '2',
-			preferredDateTime: preferredDate,
-			residentName: 'Resident',
-			ownerName: 'Owner',
-			address: '123 Street',
-			district: 'Colombo',
-			email: 'resident@example.com',
-			phone: '0771234567',
-			approxWeight: '12',
+			quantity: 2,
+			approxWeight: 12,
 			specialNotes: 'Handle carefully',
+		});
+		const metadata = {
+			slotId,
+			itemType: payload.itemType,
+			itemLabel: 'Electronic waste',
+			quantity: String(payload.quantity),
+			preferredDateTime: payload.preferredDateTime,
+			residentName: payload.residentName,
+			ownerName: payload.ownerName,
+			address: payload.address,
+			district: payload.district,
+			email: payload.email,
+			phone: payload.phone,
+			approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
+			specialNotes: payload.specialNotes,
 		};
 
 		mockPaymentModel.findOne.mockResolvedValue(buildPaymentDoc(metadata));
@@ -554,18 +569,23 @@ describe('syncCheckout', () => {
 	});
 
 	it('reports pending payments gracefully', async () => {
-		const metadata = {
-			slotId: 'slot-1',
+		const { slotId, payload } = await acquireFirstAvailableSlot({
 			itemType: 'furniture',
-			quantity: '1',
-			preferredDateTime: futureISO(),
-			residentName: 'Resident',
-			ownerName: 'Owner',
-			address: '123 Street',
-			district: 'Colombo',
-			email: 'resident@example.com',
-			phone: '0771234567',
-			approxWeight: '20',
+			quantity: 1,
+			approxWeight: 20,
+		});
+		const metadata = {
+			slotId,
+			itemType: payload.itemType,
+			quantity: String(payload.quantity),
+			preferredDateTime: payload.preferredDateTime,
+			residentName: payload.residentName,
+			ownerName: payload.ownerName,
+			address: payload.address,
+			district: payload.district,
+			email: payload.email,
+			phone: payload.phone,
+			approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
 		};
 
 		mockPaymentModel.findOne.mockResolvedValue(buildPaymentDoc(metadata));
