@@ -85,6 +85,7 @@ export default function ReportsPage({ session }) {
     return session.id ?? session._id ?? null
   }, [session])
 
+  // Fetch the available filters (regions, waste types, etc.) once when the page loads.
   useEffect(() => {
     async function loadConfig() {
       setLoadingConfig(true)
@@ -120,6 +121,7 @@ export default function ReportsPage({ session }) {
     setVisibility(prev => ({ ...prev, [key]: !prev[key] }))
   }, [])
 
+  // Generate the analytics snapshot based on the currently selected criteria.
   const handleSubmit = useCallback(async event => {
     event.preventDefault()
     setError(null)
@@ -173,6 +175,7 @@ export default function ReportsPage({ session }) {
 
   const canExport = Boolean(report)
 
+  // Export the generated analytics to either PDF or Excel for sharing with stakeholders.
   const handleExport = useCallback(format => {
     if (!report) return
 
@@ -219,6 +222,7 @@ export default function ReportsPage({ session }) {
     }
   }, [report])
 
+  // Cache the largest totals so the proportional bars render consistently.
   const maxRegionValue = useMemo(() => {
     if (!report?.charts?.regionSummary?.length) return 0
     return Math.max(...report.charts.regionSummary.map(item => item.totalKg))

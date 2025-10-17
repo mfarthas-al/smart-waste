@@ -9,6 +9,7 @@ import { DigitalClock } from '@mui/x-date-pickers/DigitalClock'
 import { useNavigate } from 'react-router-dom'
 import ConfirmationIllustration from '../../assets/Confirmation.png'
 
+// Base shape for the resident special collection request form.
 const initialFormState = {
   residentName: '',
   ownerName: '',
@@ -24,6 +25,7 @@ const initialFormState = {
   specialNotes: '',
 }
 
+// Map backend request statuses to MUI chips for the history tables.
 const REQUEST_STATUSES = {
   scheduled: { label: 'Scheduled', color: 'success' },
   cancelled: { label: 'Cancelled', color: 'default' },
@@ -31,6 +33,7 @@ const REQUEST_STATUSES = {
   'payment-failed': { label: 'Payment failed', color: 'error' },
 }
 
+// Companion map for payment status chips displayed alongside requests.
 const PAYMENT_STATUSES = {
   success: { label: 'Payment success', color: 'success' },
   pending: { label: 'Payment pending', color: 'warning' },
@@ -38,6 +41,7 @@ const PAYMENT_STATUSES = {
   'not-required': { label: 'No payment required', color: 'default' },
 }
 
+// Keep currency formatting consistent across estimations and receipts.
 const currencyFormatter = new Intl.NumberFormat('en-LK', {
   style: 'currency',
   currency: 'LKR',
@@ -100,6 +104,7 @@ function getSessionId(session) {
   return session?.id || session?._id || ''
 }
 
+// Safely parse JSON bodies while tolerating empty responses.
 async function safeJson(response) {
   const text = await response.text()
   if (!text) return null
@@ -111,6 +116,7 @@ async function safeJson(response) {
   }
 }
 
+// Fetch global configuration (pricing policies, slot windows) for special collections.
 function useSpecialCollectionConfig() {
   const [state, setState] = useState({ loading: true, error: null, items: [], slotConfig: null })
 
@@ -150,6 +156,7 @@ function useSpecialCollectionConfig() {
   return state
 }
 
+// Load resident-specific special collection requests and notify on invalid sessions.
 function useResidentRequests(sessionId, onSessionInvalid) {
   const [state, setState] = useState({ loading: false, error: null, requests: [] })
 
@@ -187,6 +194,7 @@ function useResidentRequests(sessionId, onSessionInvalid) {
   return { ...state, refresh: load }
 }
 
+// Multi-step form handling resident input and slot availability checks.
 function RequestForm({
   form,
   allowedItems,
@@ -487,6 +495,7 @@ function RequestForm({
   )
 }
 
+// Lists available pickup slots and handles immediate booking actions.
 function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFlight }) {
   const slots = availability?.slots ?? []
   const payment = availability?.payment
@@ -586,6 +595,7 @@ function AvailabilitySection({ availability, loading, onConfirmSlot, bookingInFl
   )
 }
 
+// Shared row layout for the payment summary card.
 function SummaryRow({ label, amount, helper, prefix = '' }) {
   return (
     <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={3}>
@@ -607,6 +617,7 @@ function SummaryRow({ label, amount, helper, prefix = '' }) {
   )
 }
 
+// Adds structure around payment estimates and highlights required charges.
 function PaymentSummary({ payment, showBreakdown = false }) {
   const subtotal = Number(payment?.baseCharge ?? 0)
   const extraCharges = Number(payment?.weightCharge ?? 0)
@@ -667,6 +678,7 @@ function PaymentSummary({ payment, showBreakdown = false }) {
   )
 }
 
+// Resident-facing table summarising existing collection requests.
 function ScheduledRequests({ requests, loading, error, allowedItems, onRefresh }) {
   const decorated = useMemo(
     () => requests.map(request => {
@@ -770,6 +782,7 @@ function ScheduledRequests({ requests, loading, error, allowedItems, onRefresh }
   )
 }
 
+// Final confirmation view after booking, including payment status context.
 function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
   if (!details) return null
 
@@ -960,6 +973,7 @@ function ConfirmationPanel({ details, onBack, onEdit, allowedItems }) {
   )
 }
 
+// Orchestrates the entire special collection request lifecycle for residents.
 export default function SpecialCollectionPage({ session, onSessionInvalid }) {
   const navigate = useNavigate()
   const sessionId = getSessionId(session)
@@ -1094,6 +1108,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     navigate('/login')
   }, [navigate])
 
+  // Validate the form locally and request available slots for the selected window.
   const checkAvailability = useCallback(async () => {
     if (!isAuthenticated) {
       ensureAuthenticated()
@@ -1171,6 +1186,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     sessionId,
   ])
 
+  // Confirm the booking server-side and snapshot the confirmation details for the UI.
   const submitBooking = useCallback(async (slot, options = {}) => {
     const { paymentStatus, paymentReference, deferPayment } = options
     setBookingInFlight(true)
@@ -1263,6 +1279,7 @@ export default function SpecialCollectionPage({ session, onSessionInvalid }) {
     }
   }, [availability, form, refreshRequests, sessionId])
 
+  // Launch a Stripe checkout session for immediate payment when required.
   const startCheckout = useCallback(async slot => {
     try {
       setBookingInFlight(true)

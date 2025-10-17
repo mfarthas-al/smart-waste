@@ -56,6 +56,7 @@ export default function SpecialCollectionPaymentSuccessCard({
   illustrationSrc,
   illustrationAlt = 'Confirmation Illustration',
 }) {
+  // Normalise payment values so the UI works even when the API omits optional fields.
   const { totalPaid, subtotal, extraCharge, taxCharge, currency } = useMemo(() => {
     const derivedTotal = payment.total ?? request?.paymentAmount ?? 0
     return {
@@ -67,6 +68,7 @@ export default function SpecialCollectionPaymentSuccessCard({
     }
   }, [payment, request])
 
+  // Cache the parsed slot start date so repeated formatting calls stay cheap.
   const slotStart = useMemo(() => (request?.slot?.start ? new Date(request.slot.start) : null), [request?.slot?.start])
 
   const scheduledDate = useMemo(() => (
@@ -91,8 +93,10 @@ export default function SpecialCollectionPaymentSuccessCard({
     [request?.totalWeightKg],
   )
 
+  // Use a friendlier label when Stripe already generated the PDF receipt.
   const downloadLabel = useMemo(() => (stripeReceiptUrl ? 'Download PDF' : 'Download'), [stripeReceiptUrl])
 
+  // Stripe URLs are opened in a new tab so the current confirmation state is preserved.
   const handleStripeReceipt = useCallback(() => {
     if (!stripeReceiptUrl) return
     window.open(stripeReceiptUrl, '_blank', 'noopener,noreferrer')

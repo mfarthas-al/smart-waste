@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { memo } from 'react'
 
+// Lightweight metric tile used across the optimization dashboard.
 function KpiCard({ icon: Icon, label, value, helper }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">

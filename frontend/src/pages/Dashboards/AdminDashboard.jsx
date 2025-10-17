@@ -1,6 +1,7 @@
 import { Button, Card, CardContent, Chip, Grid, Stack, Typography } from '@mui/material'
 import { BarChart3, ShieldCheck, Users } from 'lucide-react'
 
+// Highlighted metrics summarising city-wide operations for administrators.
 const adminHighlights = [
   {
     title: 'Active collectors',
@@ -22,6 +23,7 @@ const adminHighlights = [
   },
 ]
 
+// Presents the administrator control-room dashboard with key KPIs and actions.
 export default function AdminDashboard() {
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6 py-12">

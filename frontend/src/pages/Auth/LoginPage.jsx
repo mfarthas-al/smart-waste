@@ -4,6 +4,7 @@ import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom'
 import { Alert, Box, Button, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material'
 import { ShieldCheck } from 'lucide-react'
 
+// Presents the login workflow for field teams and redirects after a successful sign-in.
 export default function LoginPage({ onLogin = () => {} }) {
     const navigate = useNavigate()
     const location = useLocation()

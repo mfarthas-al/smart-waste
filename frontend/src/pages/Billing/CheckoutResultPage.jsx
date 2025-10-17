@@ -38,6 +38,7 @@ ResultStatus.propTypes = {
   status: PropTypes.string.isRequired,
 }
 
+// Reconciles Stripe checkout sessions and surfaces outcome actions for billing. 
 export default function CheckoutResultPage({ session = null }) {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -52,6 +53,7 @@ export default function CheckoutResultPage({ session = null }) {
   const [requestDetails, setRequestDetails] = useState(null)
   const [downloadPending, setDownloadPending] = useState(false)
 
+  // Establish the final checkout status as soon as the Stripe session id is available.
   useEffect(() => {
     if (!session) {
       setError('Sign in to finish checking out your payment session.')
@@ -100,6 +102,7 @@ export default function CheckoutResultPage({ session = null }) {
     navigate(target, { replace: true })
   }, [navigate, session?.role])
 
+  // Download the PDF receipt directly when possible, otherwise fall back to Stripe's hosted receipt.
   const handleDownloadReceipt = useCallback(async () => {
     const request = requestDetails
     if (!request) {
@@ -160,11 +163,13 @@ export default function CheckoutResultPage({ session = null }) {
   }, [receiptUrl, requestDetails, session?._id, session?.id])
 
   const dashboardPath = session?.role === 'admin' ? '/adminDashboard' : '/userDashboard'
+  // Ensure all payment summaries render with a consistent, upper-cased currency code.
   const fallbackCurrency = useMemo(
     () => (requestDetails?.paymentCurrency || requestDetails?.currency || bill?.currency || currency || 'LKR').toUpperCase(),
     [bill?.currency, currency, requestDetails],
   )
 
+  // Merge request details with fallback currency to keep downstream views aligned.
   const mergedRequest = useMemo(() => {
     if (!requestDetails) return null
     return {
@@ -173,6 +178,7 @@ export default function CheckoutResultPage({ session = null }) {
     }
   }, [requestDetails, fallbackCurrency])
 
+  // Build a display-friendly payment summary regardless of whether the request or bill provided the data.
   const paymentDetails = useMemo(() => ({
     total: requestDetails?.paymentAmount ?? bill?.amount ?? amount ?? 0,
     subtotal: requestDetails?.paymentSubtotal ?? bill?.amount ?? amount ?? 0,

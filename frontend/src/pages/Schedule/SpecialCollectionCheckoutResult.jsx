@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import ConfirmationIllustration from '../../assets/Confirmation.png'
 import SpecialCollectionPaymentSuccessCard from '../../components/SpecialCollectionPaymentSuccessCard.jsx'
 
+// Finalises special collection payments and surfaces follow-up actions.
 export default function SpecialCollectionCheckoutResult({ session = null }) {
     const location = useLocation()
     const navigate = useNavigate()
@@ -21,6 +22,7 @@ export default function SpecialCollectionCheckoutResult({ session = null }) {
     })
     const [downloadPending, setDownloadPending] = useState(false)
 
+    // Refetch the payment session details using the redirect parameters provided by Stripe.
     useEffect(() => {
         if (!sessionId) {
             setState({
@@ -93,6 +95,7 @@ export default function SpecialCollectionCheckoutResult({ session = null }) {
     const { loading, error, request, paymentStatus } = state
     const isSuccess = paymentStatus === 'success' && request
 
+    // Attempt to download the municipal receipt; fall back to alerts on failure.
     const handleDownloadReceipt = useCallback(async () => {
         if (!request) return
 

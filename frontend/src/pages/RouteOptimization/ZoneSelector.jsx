@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { memo } from 'react'
 import { Button, MenuItem, Select } from '@mui/material'
 
+// Selection panel for choosing the target city before running optimization.
 function ZoneSelector({
   cities,
   selectedCity,

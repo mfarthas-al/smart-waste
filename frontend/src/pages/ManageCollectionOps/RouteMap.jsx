@@ -4,7 +4,7 @@ import PropTypes from 'prop-types'
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 
-// simple numbered marker with Tailwind-like styles (works without Tailwind too)
+// Render a numbered badge-style marker without relying on Tailwind runtime classes.
 function numberIcon(n, color = '#10b981') {
   return L.divIcon({
     className: 'numbered-marker',
@@ -35,6 +35,7 @@ function depotIcon() {
   });
 }
 
+// Auto adjust the Leaflet viewport whenever the route footprint changes.
 function FitBounds({ points }) {
   const map = useMap()
   useEffect(() => {
@@ -56,6 +57,7 @@ FitBounds.propTypes = {
  */
 const DEFAULT_DEPOT = Object.freeze({ lat: 6.927, lon: 79.861 })
 
+// Visualises the optimized depot-to-stops loop for collection crews.
 export default function RouteMap({ plan, depot }) {
   const baseDepot = depot || plan?.depot || DEFAULT_DEPOT
   const stops = plan?.stops ?? []

@@ -3,6 +3,7 @@ import { memo, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import L from 'leaflet'
 
+// Keep the mini-map viewport aligned to the currently highlighted zone.
 function Fit({ bbox }) {
   const map = useMap()
   useEffect(() => {
@@ -19,6 +20,7 @@ Fit.propTypes = {
 
 const DEFAULT_CENTER = Object.freeze([6.927, 79.861])
 
+// Quick map overview for toggling between municipal zones.
 function MiniZoneMap({ cities, selectedCity, onSelectCity }) {
   const active = useMemo(() => cities.find(city => city.name === selectedCity), [cities, selectedCity])
   const defaultBBox = active?.bbox || cities[0]?.bbox

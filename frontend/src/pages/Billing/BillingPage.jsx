@@ -3,6 +3,7 @@ import PropTypes from 'prop-types'
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, FormControl, Grid, IconButton, InputLabel, MenuItem, Select, Stack, Tooltip, Typography } from '@mui/material'
 import { Banknote, CreditCard, Download, ExternalLink, Receipt, RefreshCcw, Wallet } from 'lucide-react'
 
+// Cache currency formatter instances so repeated renders avoid recreating Intl objects.
 const CURRENCY_FORMATTERS = new Map()
 const PAYMENT_METHOD_LABELS = Object.freeze({
   card: 'Card (Visa / Mastercard)',
@@ -34,6 +35,7 @@ function formatCurrency(amount, currency = 'LKR') {
   }
 }
 
+// Normalize due dates to midnight to show how many whole days remain.
 function computeDueInDays(dueDate) {
   if (!dueDate) return null
   const due = new Date(dueDate)
@@ -211,6 +213,7 @@ PaidBillRow.propTypes = {
   onDownloadReceipt: PropTypes.func.isRequired,
 }
 
+// Coordinates billing summaries, outstanding invoices, and Stripe-based checkout flows.
 export default function BillingPage({ session = null, variant = 'page' }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -220,6 +223,7 @@ export default function BillingPage({ session = null, variant = 'page' }) {
   const [receiptFeedback, setReceiptFeedback] = useState(null)
   const userId = useMemo(() => session?.id || session?._id || null, [session])
 
+  // Pull the latest billing snapshot and sync default payment method selections.
   const loadBills = useCallback(async () => {
     if (!userId) return
     setLoading(true)
@@ -235,7 +239,7 @@ export default function BillingPage({ session = null, variant = 'page' }) {
       setSelectedMethods(prev => {
         const next = { ...prev }
         const supported = payload.supportedPaymentMethods?.length ? payload.supportedPaymentMethods : ['card']
-        payload.bills?.outstanding?.forEach(bill => {
+  payload.bills?.outstanding?.forEach(bill => {
           const currentMethod = next[bill._id]
           if (!currentMethod || !supported.includes(currentMethod)) {
             next[bill._id] = supported[0]

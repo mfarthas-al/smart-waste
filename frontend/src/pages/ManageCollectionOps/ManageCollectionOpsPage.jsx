@@ -8,6 +8,7 @@ import KpiCard from '../RouteOptimization/KpiCard.jsx'
 import SummaryCard from '../RouteOptimization/SummaryCard.jsx'
 import ProgressSteps from '../RouteOptimization/ProgressSteps.jsx'
 
+// Offline-friendly fallback cities used when the API catalogue is unavailable.
 const FALLBACK_CITIES = [
   {
     name: 'Homagama',
@@ -35,6 +36,7 @@ const FALLBACK_CITIES = [
   },
 ]
 
+// Default progress steps mirrored in the progress widget.
 const PROGRESS_TEMPLATE = [
   { label: 'Gathering bin telemetry', status: 'idle' },
   { label: 'Balancing truck loads', status: 'idle' },
@@ -49,6 +51,7 @@ const CITIES_ENDPOINT = '/api/ops/cities'
 const BINS_ENDPOINT = '/api/ops/bins'
 const DIRECTIONS_ENDPOINT = '/api/ops/routes'
 
+// Produce a progress step array with updated status values for the UI timeline.
 const createProgressState = (activeIndex = -1, status = 'idle') => PROGRESS_TEMPLATE.map((step, index) => {
   if (status === 'done') {
     return { ...step, status: 'done' }
@@ -81,6 +84,7 @@ const formatDuration = minutes => {
   return `${hrs} hr ${mins} min`
 }
 
+// Coordinates the end-to-end optimization workflow for operations managers.
 export default function ManageCollectionOpsPage() {
   const [cities, setCities] = useState([])
   const [city, setCity] = useState('')
@@ -93,6 +97,7 @@ export default function ManageCollectionOpsPage() {
   const [error, setError] = useState('')
   const [lastOptimizedAt, setLastOptimizedAt] = useState(null)
 
+  // Load the managed city catalogue, falling back to static data when the API fails.
   useEffect(() => {
     let ignore = false
     async function loadCities() {
@@ -122,6 +127,7 @@ export default function ManageCollectionOpsPage() {
     }
   }, [])
 
+  // Whenever the selected city changes, fetch bins scoped to that municipality.
   useEffect(() => {
     if (!city) return
     let ignore = false
@@ -150,6 +156,7 @@ export default function ManageCollectionOpsPage() {
     }
   }, [city])
 
+  // Reset derived state whenever the active city changes.
   useEffect(() => {
     setPlan(null)
     setDirections(null)
@@ -186,6 +193,7 @@ export default function ManageCollectionOpsPage() {
     })
   }, [selectedCity, bins.length])
 
+  // Request a fresh optimized route plan and update progress indicators as we go.
   const optimize = useCallback(async () => {
     if (!city) return
     setLoading(true)

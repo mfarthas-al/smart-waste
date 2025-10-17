@@ -6,6 +6,7 @@ import { UserPlus } from 'lucide-react'
 
 const INITIAL_FORM = Object.freeze({ name: '', email: '', password: '', confirmPassword: '' })
 
+// Perform lightweight client-side validation and return the first blocking issue.
 function validateForm(form) {
   if (!form.name.trim()) {
     return 'Please provide your full name.'
@@ -22,12 +23,14 @@ function validateForm(form) {
   return null
 }
 
+// Guides new municipal users through account creation and redirects after success.
 export default function RegisterPage({ onRegister = () => {} }) {
   const navigate = useNavigate()
   const [form, setForm] = useState(INITIAL_FORM)
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState(null)
 
+  // Memoize validation to keep button states and submission logic aligned.
   const validationMessage = useMemo(() => validateForm(form), [form])
 
   const handleChange = useCallback(event => {

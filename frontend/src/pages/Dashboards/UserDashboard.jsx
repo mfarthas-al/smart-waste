@@ -5,12 +5,14 @@ import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Divider,
 import { CalendarClock, ChevronLeft, ChevronRight, History, Menu, RefreshCcw, Wallet, X, } from 'lucide-react'
 import BillingPage from '../Billing/BillingPage.jsx'
 
+// Static navigation model for the end-user dashboard sections.
 const dashboardSections = Object.freeze([
   { id: 'billing', label: 'Billing & payments', icon: Wallet, description: 'Manage invoices and receipts' },
   { id: 'schedule-upcoming', label: 'Upcoming pickups', icon: CalendarClock, description: 'Confirmed collection slots' },
   { id: 'schedule-history', label: 'Pickup history', icon: History, description: 'Completed and cancelled requests' },
 ])
 
+// Map request statuses to colour tokens for MUI components.
 const statusColorMap = {
   scheduled: 'success',
   cancelled: 'default',
@@ -33,6 +35,7 @@ function titleCase(value = '') {
     .join(' ')
 }
 
+// Defensive helper to parse optional JSON bodies coming from the API.
 async function readJson(response) {
   const text = await response.text()
   if (!text) return {}
@@ -78,6 +81,7 @@ function formatStatusLabel(status) {
   return titleCase(status.replace(/-/g, ' '))
 }
 
+// Cache per-currency Intl.NumberFormat instances for summary widgets.
 const CURRENCY_FORMATTERS = new Map()
 
 function getCurrencyFormatter(currency) {
@@ -105,6 +109,7 @@ function formatCurrency(amount, currency = 'LKR') {
   }
 }
 
+// Aggregate special collection scheduling data for the dashboard widgets.
 function useSchedulingData(session) {
   const [requests, setRequests] = useState([])
   const [config, setConfig] = useState(null)
@@ -174,6 +179,7 @@ const NAV_WIDTH_EXPANDED = 280
 const NAV_WIDTH_COLLAPSED = 96
 const NAV_TOP_OFFSET = 104
 
+// Renders the left-hand navigation rail and handles section switching.
 function NavigationItems({ collapsed, activeSection, onNavigate, onClose, isDesktop }) {
   return (
     <Stack spacing={1}>
@@ -719,6 +725,7 @@ HistorySection.propTypes = {
   onRefresh: PropTypes.func.isRequired,
 }
 
+// Composes billing, scheduling, and navigation panes for citizen users.
 export default function UserDashboard({ session = null }) {
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'))

@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { memo, useMemo } from 'react'
 
+// Presents the optimized route’s key performance metrics in a compact list.
 function SummaryCard({ plan, summary, directions }) {
   const items = useMemo(() => ([
     { label: 'Total bins considered', value: summary?.consideredBins ?? '—' },

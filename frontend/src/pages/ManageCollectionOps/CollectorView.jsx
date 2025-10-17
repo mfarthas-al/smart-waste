@@ -2,15 +2,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Chip, LinearProgress } from '@mui/material'
 import { AlertTriangle, CheckCircle2, Clock8, Loader2, MapPin, ThermometerSun } from 'lucide-react'
 
+// Hard-coded route context for the field collector mobile view.
 const TRUCK_ID = 'TRUCK-01'
 const ROUTE_ENDPOINT = `/api/ops/routes/${TRUCK_ID}/today`
 
+// Provides the on-shift collector with live route progress and completion tools.
 export default function CollectorView() {
   const [stops, setStops] = useState([])
   const [loading, setLoading] = useState(true)
   const [pendingBin, setPendingBin] = useState('')
   const [banner, setBanner] = useState(null)
 
+  // Load the current route once on mount and guard against stale state updates.
   useEffect(() => {
     let isMounted = true
     async function load() {
@@ -35,6 +38,7 @@ export default function CollectorView() {
     return () => { isMounted = false }
   }, [])
 
+  // Persist the collection event and optimistically update the local checklist state.
   const markCollected = useCallback(async binId => {
     try {
       setPendingBin(binId)
