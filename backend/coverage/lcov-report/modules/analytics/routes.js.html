@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/models/SpecialCollectionRequest.js</title>
+    <title>Code coverage report for modules/analytics/routes.js</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../prettify.css" />
     <link rel="stylesheet" href="../../base.css" />
@@ -19,13 +19,13 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/models</a> SpecialCollectionRequest.js</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">modules/analytics</a> routes.js</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>5/5</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>5/5</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -115,18 +115,7 @@
 <a name='L50'></a><a href='#L50'>50</a>
 <a name='L51'></a><a href='#L51'>51</a>
 <a name='L52'></a><a href='#L52'>52</a>
-<a name='L53'></a><a href='#L53'>53</a>
-<a name='L54'></a><a href='#L54'>54</a>
-<a name='L55'></a><a href='#L55'>55</a>
-<a name='L56'></a><a href='#L56'>56</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<a name='L53'></a><a href='#L53'>53</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -139,11 +128,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -165,69 +163,62 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">const { Schema, model, Types } = <span class="cstat-no" title="statement not covered" >require('mongoose');</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
+ * Analytics Routes
+ * 
+ * Defines HTTP endpoints for analytics functionality.
+ * Follows RESTful API design principles.
+ * 
+ * Route Definitions:
+ * - GET  /config  - Retrieves analytics configuration (filters and date ranges)
+ * - POST /report  - Generates a waste analytics report based on criteria
+ * 
+ * @module routes/analytics
+ */
 &nbsp;
-const slotSchema = <span class="cstat-no" title="statement not covered" >new Schema({</span>
-  slotId: { type: String, required: true },
-  start: { type: Date, required: true },
-  end: { type: Date, required: true },
-}, { _id: false });
+const router = require('express').Router();
+const controller = require('./controller');
 &nbsp;
-const requestSchema = <span class="cstat-no" title="statement not covered" >new Schema({</span>
-  userId: { type: Types.ObjectId, ref: 'User', required: true },
-  userEmail: { type: String, required: true },
-  userName: { type: String, required: true },
-  residentName: { type: String, required: true },
-  ownerName: { type: String },
-  address: { type: String, required: true },
-  district: { type: String, required: true },
-  contactEmail: { type: String, required: true },
-  contactPhone: { type: String, required: true },
-  approxWeightKg: { type: Number },
-  totalWeightKg: { type: Number },
-  specialNotes: { type: String },
-  itemType: { type: String, required: true },
-  itemLabel: { type: String },
-  quantity: { type: Number, required: true, min: 1 },
-  preferredDateTime: { type: Date, required: true },
-  slot: { type: slotSchema, required: true },
-  status: {
-    type: String,
-    enum: ['scheduled', 'cancelled', 'pending-payment', 'payment-failed'],
-    default: 'scheduled',
-  },
-  paymentRequired: { type: Boolean, default: false },
-  paymentStatus: {
-    type: String,
-    enum: ['pending', 'success', 'failed', 'not-required'],
-    default: 'not-required',
-  },
-  paymentAmount: { type: Number, default: 0 },
-  paymentSubtotal: { type: Number, default: 0 },
-  paymentWeightCharge: { type: Number, default: 0 },
-  paymentTaxCharge: { type: Number, default: 0 },
-  paymentReference: { type: String },
-  paymentDueAt: { type: Date },
-  billingId: { type: Types.ObjectId, ref: 'Bill' },
-  notifications: {
-    residentSentAt: { type: Date },
-    authoritySentAt: { type: Date },
-  },
-  cancellationReason: { type: String },
-}, { timestamps: true });
+/**
+ * GET /analytics/config
+ * 
+ * Retrieves available filter options and default date ranges
+ * for analytics report generation.
+ * 
+ * @route GET /api/analytics/config
+ * @returns {Object} 200 - Configuration object with filters
+ * @returns {Object} 500 - Internal server error
+ */
+router.get('/config', controller.getConfig);
 &nbsp;
-<span class="cstat-no" title="statement not covered" >requestSchema.index({ 'slot.slotId': 1 });</span>
-<span class="cstat-no" title="statement not covered" >requestSchema.index({ userId: 1, createdAt: -1 });</span>
+/**
+ * POST /analytics/report
+ * 
+ * Generates a comprehensive waste analytics report based on
+ * user-provided criteria including date range, regions, waste types,
+ * and billing models.
+ * 
+ * @route POST /api/analytics/report
+ * @param {Object} body.userId - ID of the requesting user (required)
+ * @param {Object} body.criteria - Report generation criteria (required)
+ * @param {Object} body.criteria.dateRange - Date range object with from/to dates
+ * @param {Array&lt;String&gt;} body.criteria.regions - Optional array of region filters
+ * @param {Array&lt;String&gt;} body.criteria.wasteTypes - Optional array of waste type filters
+ * @param {Array&lt;String&gt;} body.criteria.billingModels - Optional array of billing model filters
+ * @returns {Object} 200 - Report data or null if no records found
+ * @returns {Object} 400 - Invalid request criteria
+ * @returns {Object} 401 - User not authenticated
+ * @returns {Object} 403 - User not authorized for analytics
+ * @returns {Object} 500 - Internal server error
+ */
+router.post('/report', controller.generateReport);
 &nbsp;
-<span class="cstat-no" title="statement not covered" >module.exports = model('SpecialCollectionRequest', requestSchema);</span>
+module.exports = router;
+&nbsp;
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -235,7 +226,7 @@ const requestSchema = <span class="cstat-no" title="statement not covered" >new 
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-10-17T12:11:42.545Z
+                at 2025-10-17T11:38:29.556Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
