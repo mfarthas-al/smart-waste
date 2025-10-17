@@ -1,12 +1,37 @@
 const nodemailer = require('nodemailer');
 
+const debugMail = (...args) => {
+  if (process.env.SMTP_DEBUG === 'true') {
+    console.info('[mailer]', ...args);
+  }
+};
+
 let transporter;
 
+const currencyFormatter = new Intl.NumberFormat('en-LK', {
+  style: 'currency',
+  currency: 'LKR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatCurrency(amount) {
+  const value = Number(amount);
+  if (!Number.isFinite(value)) {
+    return 'LKR 0.00';
+  }
+  return currencyFormatter.format(value);
+}
+
 function getTransporter() {
-  if (transporter) return transporter;
+  if (transporter) {
+    debugMail('Reusing existing transporter');
+    return transporter;
+  }
 
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_SECURE, SMTP_KEY } = process.env;
   if (!SMTP_HOST) {
+    debugMail('SMTP_HOST missing; mail transport disabled');
     return null;
   }
 
@@ -17,6 +42,14 @@ function getTransporter() {
     port: Number(SMTP_PORT) || 587,
     secure: SMTP_SECURE === 'true' || Number(SMTP_PORT) === 465,
     auth: SMTP_USER && smtpPassword ? { user: SMTP_USER, pass: smtpPassword } : undefined,
+  });
+
+  transporter.verify((verifyErr, success) => {
+    if (verifyErr) {
+      console.warn('⚠️ Mailer verification failed', verifyErr);
+    } else if (success) {
+      debugMail('SMTP transporter ready', { host: SMTP_HOST, port: SMTP_PORT });
+    }
   });
 
   return transporter;
@@ -33,48 +66,159 @@ async function sendMail(message) {
   }
 
   const envelope = {
-    from: process.env.SMTP_FROM,
+    from: process.env.SMTP_FROM || 'Smart Waste LK <no-reply@smartwaste.lk>',
     ...message,
   };
 
-  await mailClient.sendMail(envelope);
-  return { sent: true, sentAt: new Date() };
+  debugMail('Sending email', {
+    to: envelope.to,
+    subject: envelope.subject,
+  });
+
+  try {
+    const info = await mailClient.sendMail(envelope);
+    debugMail('Email dispatch result', { messageId: info.messageId, to: envelope.to });
+    return { sent: true, sentAt: new Date(), messageId: info.messageId };
+  } catch (sendError) {
+    console.error('🚨 Email send failed', {
+      to: envelope.to,
+      subject: envelope.subject,
+      error: sendError.message,
+    });
+    return { sent: false, reason: 'send-error', error: sendError };
+  }
 }
 
-async function sendSpecialCollectionConfirmation({ resident, slot, request }) {
+async function sendSpecialCollectionConfirmation({ resident, slot, request, receipt }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
   }
 
-  const subject = `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
+  debugMail('Queueing resident confirmation email', {
+    to: resident.email,
+    requestId: request._id?.toString() || request.id,
+  });
+
+  const isPaymentPending = request.paymentStatus === 'pending' && request.paymentRequired !== false;
+  const paymentDueAt = request.paymentDueAt || slot.start;
+  const formattedDueAt = paymentDueAt
+    ? new Date(paymentDueAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })
+    : null;
+
+  const subject = isPaymentPending
+    ? `Special collection pending payment: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+    : `Special collection confirmed: ${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
   const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
+  const scheduledDate = new Date(slot.start).toLocaleDateString('en-GB', { timeZone: 'Asia/Colombo', day: 'numeric', month: 'short', year: 'numeric' });
+  const scheduledTime = new Date(slot.start).toLocaleTimeString('en-GB', { timeZone: 'Asia/Colombo', hour: '2-digit', minute: '2-digit' });
+
+  const subtotal = formatCurrency(request.paymentSubtotal || request.paymentAmount || 0);
+  const extraCharge = formatCurrency(request.paymentWeightCharge || 0);
+  const taxCharge = formatCurrency(request.paymentTaxCharge || 0);
+  const totalCharge = formatCurrency(request.paymentAmount || 0);
 
   const text = [
     `Hello ${resident.name},`,
     '',
-    'Your special waste collection has been scheduled successfully.',
-    `Item type: ${request.itemType}`,
-    `Quantity: ${request.quantity}`,
-    `Collection window: ${slotWindow}`,
-    request.paymentRequired ? `Payment amount: LKR ${request.paymentAmount.toLocaleString()}` : 'Payment collected: Not required',
+    isPaymentPending
+      ? 'Your special waste collection booking is reserved and awaiting payment.'
+      : 'Your special waste collection has been scheduled successfully.',
+    receipt?.issuedAt
+      ? `Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`
+      : null,
+    isPaymentPending && formattedDueAt
+      ? `Payment due by: ${formattedDueAt}`
+      : null,
     '',
-    'If you need to make changes, contact the municipal hotline at 1919.',
+    'Pickup details:',
+    `  Address: ${request.address}`,
+    `  District: ${request.district}`,
+    `  Phone: ${request.contactPhone}`,
+    `  Email: ${request.contactEmail}`,
+    `  Item type: ${request.itemLabel || request.itemType}`,
+    `  Quantity: ${request.quantity}`,
+    request.approxWeightKg ? `  Approx. weight per item: ${request.approxWeightKg} kg` : null,
+    request.totalWeightKg ? `  Estimated total weight: ${request.totalWeightKg} kg` : null,
+    `  Scheduled date: ${scheduledDate}`,
+    `  Scheduled time: ${scheduledTime}`,
+    '',
+    isPaymentPending ? 'Payment due:' : 'Payment receipt:',
+    `  Subtotal: ${subtotal}`,
+    `  Extra charges: ${extraCharge}`,
+    `  Tax: ${taxCharge}`,
+    `${isPaymentPending ? '  Total due' : '  Total paid'}: ${totalCharge}`,
+    isPaymentPending ? '  Status: awaiting payment' : null,
+    '',
+    isPaymentPending
+      ? 'Please complete the payment before the scheduled slot. Bookings without payment will be cancelled automatically.'
+      : 'If you need to make changes, contact the municipal hotline at 1919.',
     '',
     'Smart Waste LK operations team',
-  ].join('\n');
+  ].filter(line => line !== null && line !== undefined).join('\n');
+
+  const receiptIssuedHtml = receipt?.issuedAt
+    ? `<p style="color:#475569;font-size:12px;">Receipt issued: ${new Date(receipt.issuedAt).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}</p>`
+    : '';
+  const paymentDueHtml = isPaymentPending && formattedDueAt
+    ? `<p style="color:#dc2626;font-size:13px;"><strong>Payment due by:</strong> ${formattedDueAt}</p>`
+    : '';
 
   const html = `<p>Hello ${resident.name},</p>
-  <p>Your special waste collection has been scheduled successfully.</p>
+  <p>${isPaymentPending
+    ? 'Your special waste collection booking is reserved and awaiting payment.'
+    : 'Your special waste collection has been scheduled successfully.'}</p>
+  ${receiptIssuedHtml}
+  ${paymentDueHtml}
+  <h3>Pickup details</h3>
   <ul>
-    <li><strong>Item type:</strong> ${request.itemType}</li>
+    <li><strong>Address:</strong> ${request.address}</li>
+    <li><strong>District:</strong> ${request.district}</li>
+    <li><strong>Phone:</strong> ${request.contactPhone}</li>
+    <li><strong>Email:</strong> ${request.contactEmail}</li>
+    <li><strong>Item type:</strong> ${request.itemLabel || request.itemType}</li>
     <li><strong>Quantity:</strong> ${request.quantity}</li>
-    <li><strong>Collection window:</strong> ${slotWindow}</li>
-    <li><strong>Payment:</strong> ${request.paymentRequired ? `LKR ${request.paymentAmount.toLocaleString()}` : 'Not required'}</li>
+    ${request.approxWeightKg ? `<li><strong>Approx. weight per item:</strong> ${request.approxWeightKg} kg</li>` : ''}
+    ${request.totalWeightKg ? `<li><strong>Estimated total weight:</strong> ${request.totalWeightKg} kg</li>` : ''}
+    <li><strong>Scheduled date:</strong> ${scheduledDate} (${slotWindow})</li>
   </ul>
-  <p>If you need to make changes, contact the municipal hotline at 1919.</p>
+  <h3>${isPaymentPending ? 'Payment due' : 'Payment receipt'}</h3>
+  <table style="border-collapse: collapse;">
+    <tbody>
+      <tr>
+        <td style="padding: 4px 12px 4px 0;">Subtotal</td>
+        <td style="padding: 4px 0; font-weight: 600;">${subtotal}</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 12px 4px 0;">Extra charges</td>
+        <td style="padding: 4px 0; font-weight: 600;">${extraCharge}</td>
+      </tr>
+      <tr>
+        <td style="padding: 4px 12px 4px 0;">Tax</td>
+        <td style="padding: 4px 0; font-weight: 600;">${taxCharge}</td>
+      </tr>
+      <tr>
+        <td style="padding: 8px 12px 4px 0; font-weight: 700;">${isPaymentPending ? 'Total due' : 'Total paid'}</td>
+        <td style="padding: 8px 0; font-weight: 700;">${totalCharge}</td>
+      </tr>
+      ${isPaymentPending ? '<tr><td style="padding:4px 12px 4px 0;">Status</td><td style="padding:4px 0; font-weight:600; color:#dc2626;">Awaiting payment</td></tr>' : ''}
+    </tbody>
+  </table>
+  <p>${isPaymentPending
+    ? 'Please complete the payment before the scheduled slot. Bookings without payment will be cancelled automatically.'
+    : 'If you need to make changes, contact the municipal hotline at 1919.'}</p>
   <p>Smart Waste LK operations team</p>`;
 
-  return sendMail({ to: resident.email, subject, text, html });
+  const attachments = receipt?.buffer
+    ? [
+        {
+          filename: receipt.filename || `special-collection-receipt-${request._id || request.id || 'booking'}.pdf`,
+          content: receipt.buffer,
+          contentType: 'application/pdf',
+        },
+      ]
+    : undefined;
+
+  return sendMail({ to: resident.email, subject, text, html, attachments });
 }
 
 async function notifyAuthorityOfSpecialPickup({ request, slot }) {
@@ -85,6 +229,8 @@ async function notifyAuthorityOfSpecialPickup({ request, slot }) {
     });
     return { sent: false, reason: 'not-configured' };
   }
+
+  debugMail('Queueing authority notification', { to: authorityEmail, requestId: request._id?.toString() });
 
   const subject = `New special pickup scheduled (${request.itemType}, ${request.quantity})`;
   const slotWindow = `${new Date(slot.start).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })} - ${new Date(slot.end).toLocaleString('en-GB', { timeZone: 'Asia/Colombo' })}`;
@@ -112,6 +258,12 @@ async function sendPaymentReceipt({ resident, bill, transaction }) {
   if (!resident?.email) {
     return { sent: false, reason: 'missing-recipient' };
   }
+
+  debugMail('Queueing payment receipt email', {
+    to: resident.email,
+    billId: bill._id?.toString() || bill.id,
+    transactionId: transaction._id?.toString() || transaction.id,
+  });
 
   const subject = `Payment received for ${bill.invoiceNumber}`;
   const amount = transaction.amount?.toLocaleString('en-LK', { style: 'currency', currency: bill.currency || 'LKR' });

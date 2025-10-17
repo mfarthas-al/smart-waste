@@ -306,11 +306,19 @@ function RequestCard({ request, itemLabelMap, variant = 'default' }) {
   const statusLabel = formatStatusLabel(request.status)
   const statusColor = statusColorMap[request.status] || 'default'
   const paymentStatus = request.paymentStatus || (request.paymentRequired ? 'pending' : 'not-required')
-  const paymentLabel = formatStatusLabel(paymentStatus)
+  const paymentLabel = (() => {
+    if (paymentStatus === 'pending') return 'Payment pending'
+    if (paymentStatus === 'success') return 'Payment received'
+    if (paymentStatus === 'failed') return 'Payment failed'
+    if (paymentStatus === 'not-required') return 'No payment required'
+    return formatStatusLabel(paymentStatus)
+  })()
   const paymentColor = paymentStatusColorMap[paymentStatus] || 'default'
   const amountLabel = request.paymentAmount > 0
     ? formatCurrency(request.paymentAmount, request.currency || request.paymentCurrency || 'LKR')
     : null
+
+  const hideStatusChip = variant === 'billing' && request.status === 'pending-payment' && paymentStatus === 'pending'
 
   const cardClass = (() => {
     if (variant === 'upcoming') return 'border-brand-200/70 bg-emerald-50/40'
@@ -337,7 +345,9 @@ function RequestCard({ request, itemLabelMap, variant = 'default' }) {
             {slotLabel}
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" justifyContent={{ xs: 'flex-start', md: 'flex-end' }}>
-            <Chip label={statusLabel} color={statusColor} size="small" variant={statusColor === 'success' ? 'filled' : 'outlined'} />
+            {!hideStatusChip && (
+              <Chip label={statusLabel} color={statusColor} size="small" variant={statusColor === 'success' ? 'filled' : 'outlined'} />
+            )}
             <Chip label={paymentLabel} color={paymentColor} size="small" variant="outlined" />
             {amountLabel && (
               <Chip label={amountLabel} color="info" size="small" variant="outlined" />
@@ -755,7 +765,7 @@ export default function UserDashboard({ session = null }) {
               <Box className="glass-panel rounded-4xl border border-slate-200/70 bg-white/90 p-8 shadow-md">
                 <Stack spacing={1.5}>
                   <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                    Crew dashboard
+                    User dashboard
                   </Typography>
                   <Typography variant="h4" fontWeight={600}>
                     {session?.name ? `Welcome back, ${session.name}` : 'Welcome to your dashboard'}

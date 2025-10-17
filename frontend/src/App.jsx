@@ -22,6 +22,9 @@ const baseNavLinks = [
 function Nav({ session, onSignOut }) {
   const [menuAnchor, setMenuAnchor] = useState(null)
   const navLinks = baseNavLinks.filter(link => {
+    if (session?.role === 'admin' && link.to === '/schedule') {
+      return false
+    }
     if (link.to === '/analytics') {
       return session?.role === 'admin'
     }

@@ -3,10 +3,12 @@ const Stripe = require('stripe');
 const User = require('../../models/User');
 const SpecialCollectionRequest = require('../../models/SpecialCollectionRequest');
 const SpecialCollectionPayment = require('../../models/SpecialCollectionPayment');
+const Bill = require('../../models/Bill');
 const {
   sendSpecialCollectionConfirmation,
   notifyAuthorityOfSpecialPickup,
 } = require('../../services/mailer');
+const { generateSpecialCollectionReceipt } = require('./receipt');
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
@@ -17,21 +19,36 @@ const allowedItems = [
     label: 'Furniture & bulky items',
     description: 'Wardrobes, sofas, tables, mattresses and similar bulky household items.',
     allow: true,
-    policy: { includedQuantity: 2, feePerExtraItem: 500 },
+    policy: {
+      includedQuantity: 2,
+      feePerExtraItem: 500,
+      includedWeightKgPerItem: 25,
+      ratePerKg: 45,
+    },
   },
   {
     id: 'e-waste',
     label: 'Electronic waste',
     description: 'Televisions, refrigerators, computers, microwaves and other electrical items.',
     allow: true,
-    policy: { baseFee: 1500, feePerAdditionalItem: 750 },
+    policy: {
+      baseFee: 1500,
+      feePerAdditionalItem: 750,
+      includedWeightKgPerItem: 10,
+      ratePerKg: 95,
+    },
   },
   {
     id: 'yard',
     label: 'Garden trimmings',
     description: 'Branches, palm fronds, and bundled yard waste (max 25kg per bundle).',
     allow: true,
-    policy: { includedQuantity: 5, feePerExtraItem: 200 },
+    policy: {
+      includedQuantity: 5,
+      feePerExtraItem: 200,
+      includedWeightKgPerItem: 15,
+      ratePerKg: 30,
+    },
   },
   {
     id: 'construction',
@@ -50,17 +67,37 @@ const SLOT_CONFIG = {
   timezone: 'Asia/Colombo',
 };
 
+const TAX_RATE = 0.03; // 3% municipal service levy
+
+const approxWeightSchema = z.union([
+  z.number().positive('Approximate weight must be greater than zero'),
+  z.null(),
+  z.undefined(),
+]);
+
+const residentDetailsSchema = {
+  residentName: z.string().min(1, 'Resident name is required'),
+  ownerName: z.string().min(1, "Owner's name is required"),
+  address: z.string().min(1, 'Address is required'),
+  district: z.string().min(1, 'District is required'),
+  email: z.string().email('A valid email is required'),
+  phone: z.string().min(7, 'A valid phone number is required'),
+  approxWeight: approxWeightSchema,
+  specialNotes: z.string().max(1000).optional(),
+};
+
 const availabilitySchema = z.object({
   userId: z.string().min(1, 'User id is required'),
   itemType: z.string().min(1, 'Item type is required'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
   preferredDateTime: z.string().datetime().or(z.date()),
-});
+}).extend(residentDetailsSchema);
 
 const bookingSchema = availabilitySchema.extend({
   slotId: z.string().min(1, 'Slot id is required'),
   paymentReference: z.string().optional(),
-  paymentStatus: z.enum(['success', 'failed']).optional(),
+  paymentStatus: z.enum(['success', 'failed', 'pending']).optional(),
+  deferPayment: z.boolean().optional(),
 });
 
 const listSchema = z.object({
@@ -161,91 +198,174 @@ async function attachAvailability(slots) {
   return results.filter(slot => slot.isAvailable);
 }
 
-function calculatePayment(itemPolicy, quantity) {
-  if (!itemPolicy?.policy) {
-    return { required: false, amount: 0 };
-  }
-  const { baseFee = 0, includedQuantity = 0, feePerExtraItem = 0, feePerAdditionalItem = 0 } = itemPolicy.policy;
-  let amount = baseFee;
-  if (includedQuantity && quantity > includedQuantity) {
-    amount += (quantity - includedQuantity) * (feePerExtraItem || feePerAdditionalItem || 0);
-  }
-  if (!includedQuantity && feePerAdditionalItem && quantity > 1) {
-    amount += (quantity - 1) * feePerAdditionalItem;
-  }
-  return { required: amount > 0 || Boolean(baseFee), amount };
+function toPositiveNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : 0;
 }
 
-async function finaliseBooking({
-  user,
-  payload,
-  slot,
-  payment,
-  paymentReference,
-  paymentDoc,
-  provider = 'internal',
-}) {
-  const existing = await SpecialCollectionRequest.countDocuments({
-    'slot.slotId': slot.slotId,
-    status: { $in: ['scheduled', 'pending-payment'] },
-  });
-  if (existing >= SLOT_CONFIG.maxRequestsPerSlot) {
-    const error = new Error('This slot has just been booked. Please choose another slot.');
-    error.code = 'SLOT_FULL';
-    throw error;
+function calculatePayment(itemPolicy, quantity, approxWeightPerItemKg) {
+  if (!itemPolicy?.policy) {
+    return { required: false, amount: 0, totalWeightKg: 0, weightCharge: 0, baseCharge: 0 };
   }
 
+  const {
+    baseFee = 0,
+    includedQuantity = 0,
+    feePerExtraItem = 0,
+    feePerAdditionalItem = 0,
+    ratePerKg = 0,
+    includedWeightKgPerItem = 0,
+  } = itemPolicy.policy;
+
+  const normalisedQuantity = Math.max(Number(quantity) || 0, 0);
+  const weightPerItem = toPositiveNumber(approxWeightPerItemKg);
+  const totalWeightKg = weightPerItem * normalisedQuantity;
+
+  let amount = baseFee;
+
+  if (includedQuantity && normalisedQuantity > includedQuantity) {
+    amount += (normalisedQuantity - includedQuantity) * (feePerExtraItem || feePerAdditionalItem || 0);
+  }
+  if (!includedQuantity && feePerAdditionalItem && normalisedQuantity > 1) {
+    amount += (normalisedQuantity - 1) * feePerAdditionalItem;
+  }
+
+  let weightCharge = 0;
+  if (ratePerKg > 0 && totalWeightKg > 0) {
+    const includedWeightTotal = toPositiveNumber(includedWeightKgPerItem) * normalisedQuantity;
+    const billableWeight = Math.max(totalWeightKg - includedWeightTotal, 0);
+    weightCharge = billableWeight * ratePerKg;
+    amount += weightCharge;
+  }
+
+  const roundedWeightCharge = Math.round(weightCharge * 100) / 100;
+  const baseChargeRaw = Math.max(amount - weightCharge, 0);
+  const roundedBaseCharge = Math.round(baseChargeRaw * 100) / 100;
+
+  const taxableBase = Math.max(roundedBaseCharge + roundedWeightCharge, 0);
+  const taxChargeRaw = taxableBase * TAX_RATE;
+  const roundedTaxCharge = Math.round(taxChargeRaw * 100) / 100;
+
+  const roundedTotalWeight = Math.round(totalWeightKg * 10) / 10;
+  const grossTotal = taxableBase + roundedTaxCharge;
+  const roundedTotal = Math.round(grossTotal * 100) / 100;
+
+  return {
+    required: roundedTotal > 0,
+    amount: roundedTotal,
+    totalWeightKg: roundedTotalWeight,
+    weightCharge: roundedWeightCharge,
+    baseCharge: roundedBaseCharge,
+    taxCharge: roundedTaxCharge,
+  };
+}
+
+async function expireOverduePendingRequests() {
+  const now = new Date();
+  const overdue = await SpecialCollectionRequest.find({
+    status: 'pending-payment',
+    'slot.start': { $lte: now },
+  }).select({ _id: 1 });
+
+  if (!overdue.length) {
+    return;
+  }
+
+  const ids = overdue.map(doc => doc._id);
+  await SpecialCollectionRequest.updateMany({ _id: { $in: ids } }, {
+    $set: {
+      status: 'cancelled',
+      paymentStatus: 'failed',
+      cancellationReason: 'Payment was not received before the scheduled time.',
+    },
+  });
+
+  await Bill.updateMany({
+    specialCollectionRequestId: { $in: ids },
+    status: 'unpaid',
+  }, {
+    $set: { status: 'cancelled' },
+  });
+}
+
+function generateSpecialCollectionInvoiceNumber(requestId) {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const suffix = requestId.toString().slice(-6).toUpperCase();
+  return `SC-${datePart}-${suffix}`;
+}
+
+async function createDeferredBooking({ user, payload, slot, payment, itemPolicy }) {
   const requestDoc = await SpecialCollectionRequest.create({
     userId: user._id,
     userEmail: user.email,
     userName: user.name,
+    residentName: payload.residentName?.trim() || user.name,
+    ownerName: payload.ownerName?.trim() || payload.residentName?.trim() || user.name,
+    address: payload.address?.trim(),
+    district: payload.district?.trim(),
+    contactEmail: payload.email?.trim() || user.email,
+    contactPhone: payload.phone?.trim(),
+    approxWeightKg: typeof payload.approxWeight === 'number' && Number.isFinite(payload.approxWeight)
+      ? payload.approxWeight
+      : undefined,
+    totalWeightKg: typeof payment.totalWeightKg === 'number' && Number.isFinite(payment.totalWeightKg)
+      ? payment.totalWeightKg
+      : undefined,
+    specialNotes: payload.specialNotes?.trim(),
     itemType: payload.itemType,
+    itemLabel: itemPolicy?.label,
     quantity: payload.quantity,
     preferredDateTime: toDate(payload.preferredDateTime),
     slot,
-    status: 'scheduled',
-    paymentRequired: payment.required,
-    paymentStatus: payment.required ? 'success' : 'not-required',
+    status: 'pending-payment',
+    paymentRequired: true,
+    paymentStatus: 'pending',
     paymentAmount: payment.amount,
-    paymentReference,
+    paymentSubtotal: payment.baseCharge,
+    paymentWeightCharge: payment.weightCharge,
+    paymentTaxCharge: payment.taxCharge,
+    paymentDueAt: slot.start,
     notifications: {},
   });
 
-  if (payment.required) {
-    const paymentPayload = {
-      requestId: requestDoc._id,
-      userId: user._id,
-      amount: payment.amount,
-      currency: 'LKR',
-      status: 'success',
-      provider,
-      reference: paymentReference,
-      stripeSessionId: paymentDoc?.stripeSessionId,
-      slotId: slot.slotId,
-      metadata: {
-        ...(paymentDoc?.metadata || {}),
-        itemType: payload.itemType,
-        quantity: payload.quantity,
-        preferredDateTime: payload.preferredDateTime,
-      },
-    };
+  const invoiceNumber = generateSpecialCollectionInvoiceNumber(requestDoc._id);
+  const dueDate = slot.start ? new Date(slot.start) : new Date(payload.preferredDateTime);
 
-    if (paymentDoc) {
-      await SpecialCollectionPayment.updateOne(
-        { _id: paymentDoc._id },
-        { $set: paymentPayload },
-      );
-    } else {
-      await SpecialCollectionPayment.create(paymentPayload);
-    }
-  }
+  const bill = await Bill.create({
+    userId: user._id,
+    invoiceNumber,
+    description: `Special collection pickup – ${itemPolicy?.label || payload.itemType}`,
+    amount: payment.amount,
+    currency: 'LKR',
+    billingPeriodStart: slot.start,
+    billingPeriodEnd: slot.end,
+    generatedAt: new Date(),
+    dueDate,
+    category: 'special-collection',
+    specialCollectionRequestId: requestDoc._id,
+  });
 
+  requestDoc.paymentReference = invoiceNumber;
+  requestDoc.billingId = bill._id;
+  await requestDoc.save();
+
+  return { requestDoc, bill };
+}
+
+async function dispatchBookingEmails({ user, requestDoc, slot, receiptBuffer, issuedAt }) {
   try {
     const [residentNotice, authorityNotice] = await Promise.all([
       sendSpecialCollectionConfirmation({
         resident: { email: user.email, name: user.name },
         slot,
         request: requestDoc,
+        receipt: receiptBuffer
+          ? {
+              buffer: receiptBuffer,
+              filename: `special-collection-receipt-${requestDoc._id}.pdf`,
+              issuedAt,
+            }
+          : undefined,
       }).catch(error => {
         console.warn('⚠️ Failed to email resident about special collection', error);
         return { sent: false };
@@ -271,6 +391,138 @@ async function finaliseBooking({
   } catch (notificationError) {
     console.warn('⚠️ Special collection notifications error', notificationError);
   }
+}
+
+const PENDING_PAYMENT_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+if (process.env.SCHEDULING_SWEEP_DISABLED !== 'true') {
+  const sweepTimer = setInterval(() => {
+    expireOverduePendingRequests().catch(error => {
+      console.warn('⚠️ Failed to expire overdue pending-payment requests', error);
+    });
+  }, PENDING_PAYMENT_SWEEP_INTERVAL_MS);
+  if (typeof sweepTimer.unref === 'function') {
+    sweepTimer.unref();
+  }
+}
+
+async function finaliseBooking({
+  user,
+  payload,
+  slot,
+  payment,
+  paymentReference,
+  paymentDoc,
+  provider = 'internal',
+  itemPolicy,
+  deferPayment = false,
+}) {
+  await expireOverduePendingRequests();
+
+  const existing = await SpecialCollectionRequest.countDocuments({
+    'slot.slotId': slot.slotId,
+    status: { $in: ['scheduled', 'pending-payment'] },
+  });
+  if (existing >= SLOT_CONFIG.maxRequestsPerSlot) {
+    const error = new Error('This slot has just been booked. Please choose another slot.');
+    error.code = 'SLOT_FULL';
+    throw error;
+  }
+
+  if (deferPayment && payment.required) {
+    const { requestDoc } = await createDeferredBooking({ user, payload, slot, payment, itemPolicy });
+    await dispatchBookingEmails({ user, requestDoc, slot, receiptBuffer: null, issuedAt: new Date() });
+    return requestDoc;
+  }
+
+  const requestDoc = await SpecialCollectionRequest.create({
+    userId: user._id,
+    userEmail: user.email,
+    userName: user.name,
+    residentName: payload.residentName?.trim() || user.name,
+    ownerName: payload.ownerName?.trim() || payload.residentName?.trim() || user.name,
+    address: payload.address?.trim(),
+    district: payload.district?.trim(),
+    contactEmail: payload.email?.trim() || user.email,
+    contactPhone: payload.phone?.trim(),
+    approxWeightKg: typeof payload.approxWeight === 'number' && Number.isFinite(payload.approxWeight)
+      ? payload.approxWeight
+      : undefined,
+    totalWeightKg: typeof payment.totalWeightKg === 'number' && Number.isFinite(payment.totalWeightKg)
+      ? payment.totalWeightKg
+      : undefined,
+    specialNotes: payload.specialNotes?.trim(),
+    itemType: payload.itemType,
+    itemLabel: itemPolicy?.label,
+    quantity: payload.quantity,
+    preferredDateTime: toDate(payload.preferredDateTime),
+    slot,
+    status: 'scheduled',
+    paymentRequired: payment.required,
+    paymentStatus: payment.required ? 'success' : 'not-required',
+    paymentAmount: payment.amount,
+    paymentSubtotal: payment.baseCharge,
+    paymentWeightCharge: payment.weightCharge,
+    paymentTaxCharge: payment.taxCharge,
+    paymentReference,
+    notifications: {},
+  });
+
+  const issuedAt = new Date();
+  let receiptBuffer = null;
+
+  if (payment.required) {
+    try {
+      receiptBuffer = await generateSpecialCollectionReceipt({
+        request: requestDoc.toObject(),
+        slot,
+        issuedAt,
+      });
+    } catch (receiptError) {
+      console.warn('⚠️ Failed to generate special collection receipt PDF', receiptError);
+    }
+
+    const paymentPayload = {
+      requestId: requestDoc._id,
+      userId: user._id,
+      amount: payment.amount,
+      currency: 'LKR',
+      status: 'success',
+      provider,
+      reference: paymentReference,
+      stripeSessionId: paymentDoc?.stripeSessionId,
+      slotId: slot.slotId,
+      metadata: {
+        ...(paymentDoc?.metadata || {}),
+        itemType: payload.itemType,
+        itemLabel: itemPolicy?.label,
+        quantity: payload.quantity,
+        preferredDateTime: payload.preferredDateTime,
+        residentName: payload.residentName,
+        ownerName: payload.ownerName,
+        address: payload.address,
+        district: payload.district,
+        email: payload.email,
+        phone: payload.phone,
+        approxWeight: payload.approxWeight,
+        specialNotes: payload.specialNotes,
+        totalWeightKg: payment.totalWeightKg,
+        weightCharge: payment.weightCharge,
+        baseCharge: payment.baseCharge,
+        taxCharge: payment.taxCharge,
+      },
+    };
+
+    if (paymentDoc) {
+      await SpecialCollectionPayment.updateOne(
+        { _id: paymentDoc._id },
+        { $set: paymentPayload },
+      );
+    } else {
+      await SpecialCollectionPayment.create(paymentPayload);
+    }
+  }
+
+  await dispatchBookingEmails({ user, requestDoc, slot, receiptBuffer, issuedAt });
 
   return requestDoc;
 }
@@ -320,7 +572,7 @@ async function checkAvailability(req, res, next) {
     const availableSlots = await attachAvailability(
       filterCandidatesForPreferredDay(candidates, preferred),
     );
-    const payment = calculatePayment(policy, payload.quantity);
+    const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     return res.json({
       ok: true,
@@ -361,9 +613,10 @@ async function confirmBooking(req, res, next) {
       return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+    const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
+    const deferPayment = Boolean(payload.deferPayment) && payment.required;
 
-    if (payment.required && payload.paymentStatus !== 'success') {
+    if (payment.required && !deferPayment && payload.paymentStatus !== 'success') {
       return res.status(402).json({ ok: false, message: 'Payment failed. The pickup was not scheduled.' });
     }
 
@@ -378,6 +631,14 @@ async function confirmBooking(req, res, next) {
       itemType: payload.itemType,
       quantity: payload.quantity,
       preferredDateTime: payload.preferredDateTime,
+      residentName: payload.residentName,
+      ownerName: payload.ownerName,
+      address: payload.address,
+      district: payload.district,
+      email: payload.email,
+      phone: payload.phone,
+      approxWeight: payload.approxWeight ?? undefined,
+      specialNotes: payload.specialNotes,
     };
 
     const requestDoc = await finaliseBooking({
@@ -385,14 +646,20 @@ async function confirmBooking(req, res, next) {
       payload: bookingDetails,
       slot,
       payment,
-      paymentReference: payment.required ? (payload.paymentReference || `PAY-${Date.now()}`) : undefined,
+      paymentReference: payment.required && !deferPayment
+        ? (payload.paymentReference || `PAY-${Date.now()}`)
+        : undefined,
       paymentDoc: null,
       provider: 'internal-simulator',
+      itemPolicy: policy,
+      deferPayment,
     });
 
     return res.status(201).json({
       ok: true,
-      message: 'Special collection scheduled successfully. You will receive a confirmation email shortly.',
+      message: deferPayment
+        ? 'Special collection booking reserved. Payment is due before the scheduled time or the slot will be cancelled.'
+        : 'Special collection scheduled successfully. You will receive a confirmation email shortly.',
       request: requestDoc,
     });
   } catch (error) {
@@ -437,7 +704,7 @@ async function startCheckout(req, res, next) {
       return res.status(400).json({ ok: false, message: 'Preferred date/time is invalid.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+    const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
     if (!payment.required) {
       return res.json({ ok: true, paymentRequired: false });
     }
@@ -461,10 +728,31 @@ async function startCheckout(req, res, next) {
     const metadata = {
       userId: user._id.toString(),
       itemType: payload.itemType,
+      itemLabel: policy.label,
       quantity: String(payload.quantity),
       preferredDateTime: preferred.toISOString(),
       slotId: slot.slotId,
+      residentName: payload.residentName,
+      ownerName: payload.ownerName,
+      address: payload.address,
+      district: payload.district,
+      email: payload.email,
+      phone: payload.phone,
+      approxWeight: payload.approxWeight != null ? String(payload.approxWeight) : undefined,
+      totalWeightKg: payment.totalWeightKg != null ? String(payment.totalWeightKg) : undefined,
+      weightCharge: payment.weightCharge != null ? String(payment.weightCharge) : undefined,
+      baseCharge: payment.baseCharge != null ? String(payment.baseCharge) : undefined,
+      taxCharge: payment.taxCharge != null ? String(payment.taxCharge) : undefined,
+      specialNotes: payload.specialNotes,
     };
+
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key] === undefined || metadata[key] === null) {
+        delete metadata[key];
+      } else {
+        metadata[key] = String(metadata[key]).slice(0, 500);
+      }
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -566,9 +854,30 @@ async function syncCheckout(req, res, next) {
       itemType: metadata.itemType,
       quantity: quantityValue,
       preferredDateTime: metadata.preferredDateTime,
+      residentName: metadata.residentName,
+      ownerName: metadata.ownerName,
+      address: metadata.address,
+      district: metadata.district,
+      email: metadata.email,
+      phone: metadata.phone,
+      approxWeight: metadata.approxWeight ? Number(metadata.approxWeight) : undefined,
+      specialNotes: metadata.specialNotes,
     };
 
-    if (!payload.itemType || Number.isNaN(payload.quantity) || payload.quantity < 1 || !payload.preferredDateTime || !metadata.slotId) {
+    if (
+      !payload.itemType
+      || Number.isNaN(payload.quantity)
+      || payload.quantity < 1
+      || !payload.preferredDateTime
+      || !metadata.slotId
+  || !payload.residentName
+  || !payload.ownerName
+      || !payload.address
+      || !payload.district
+      || !payload.email
+      || !payload.phone
+      || (payload.approxWeight !== undefined && (Number.isNaN(payload.approxWeight) || payload.approxWeight <= 0))
+    ) {
       await SpecialCollectionPayment.updateOne({ _id: paymentDoc._id }, {
         $set: { status: 'failed', reference: paymentIntent?.id || sessionId },
       });
@@ -593,7 +902,7 @@ async function syncCheckout(req, res, next) {
       return res.status(409).json({ ok: false, message: 'The chosen slot is no longer available. Please select a new time.' });
     }
 
-    const payment = calculatePayment(policy, payload.quantity);
+  const payment = calculatePayment(policy, payload.quantity, payload.approxWeight);
 
     if (!paymentSucceeded) {
       if (paymentFailed) {
@@ -610,6 +919,15 @@ async function syncCheckout(req, res, next) {
     }
 
     const user = await resolveUser(paymentDoc.userId.toString());
+    if (!payment.required) {
+      await SpecialCollectionPayment.updateOne({ _id: paymentDoc._id }, {
+        $set: {
+          status: 'failed',
+          reference: paymentIntent?.id || sessionId,
+        },
+      });
+      return res.status(400).json({ ok: false, message: 'Payment metadata indicates zero amount. Please contact support.' });
+    }
     const requestDoc = await finaliseBooking({
       user,
       payload,
@@ -618,6 +936,7 @@ async function syncCheckout(req, res, next) {
       paymentReference: paymentIntent?.id || sessionId,
       paymentDoc,
       provider: 'stripe',
+      itemPolicy: policy,
     });
 
     return res.json({
@@ -669,6 +988,39 @@ async function listUserRequests(req, res, next) {
   }
 }
 
+async function downloadReceipt(req, res, next) {
+  try {
+    const { requestId } = z.object({ requestId: z.string().min(1) }).parse(req.params);
+    const { userId } = z.object({ userId: z.string().min(1) }).parse(req.query);
+
+    await resolveUser(userId);
+
+    const requestDoc = await SpecialCollectionRequest.findById(requestId).lean();
+    if (!requestDoc) {
+      return res.status(404).json({ ok: false, message: 'Receipt not found. Please refresh your bookings.' });
+    }
+
+    if (requestDoc.userId?.toString?.() !== userId) {
+      return res.status(403).json({ ok: false, message: 'You are not authorised to download this receipt.' });
+    }
+
+    const buffer = await generateSpecialCollectionReceipt({
+      request: requestDoc,
+      slot: requestDoc.slot,
+      issuedAt: new Date(),
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="special-collection-receipt-${requestId}.pdf"`);
+    return res.send(buffer);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, message: error.errors[0]?.message || 'Invalid request' });
+    }
+    return next(error);
+  }
+}
+
 module.exports = {
   getConfig,
   checkAvailability,
@@ -676,4 +1028,5 @@ module.exports = {
   startCheckout,
   syncCheckout,
   listUserRequests,
+  downloadReceipt,
 };
