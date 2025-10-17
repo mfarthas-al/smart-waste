@@ -55,6 +55,7 @@ describe('Route optimization components', () => {
 
   it('allows selecting a city and triggering route generation', async () => {
     const onSelectCity = vi.fn()
+    const onSelectWindow = vi.fn()
     const onGenerate = vi.fn()
     const user = userEvent.setup()
 
@@ -64,17 +65,27 @@ describe('Route optimization components', () => {
         selectedCity="Colombo"
         zoneDetails={{ totalBins: 120, areaSize: 45, population: '89k', lastCollection: 'Today' }}
         onSelectCity={onSelectCity}
+        timeWindow="06:00-10:00"
+        availableWindows={['06:00-10:00', '10:00-14:00']}
+        onSelectTimeWindow={onSelectWindow}
         onGenerate={onGenerate}
         loading={false}
       />,
     )
 
-    const select = screen.getByRole('combobox')
-    await user.click(select)
+    const comboBoxes = screen.getAllByRole('combobox')
+    expect(comboBoxes.length).toBeGreaterThanOrEqual(1)
+
+    await user.click(comboBoxes[0])
     const listbox = await screen.findByRole('listbox')
     await user.click(within(listbox).getByText('Kandy'))
 
     expect(onSelectCity).toHaveBeenCalledWith('Kandy')
+
+    await user.click(comboBoxes[1])
+    const windowList = await screen.findByRole('listbox')
+    await user.click(within(windowList).getByText('10:00-14:00'))
+    expect(onSelectWindow).toHaveBeenCalledWith('10:00-14:00')
 
     const generateButton = screen.getByRole('button', { name: /Generate Optimized Route/i })
     await user.click(generateButton)

@@ -58,12 +58,23 @@ exports.listBinsByCity = async (req, res) => {
 
 exports.optimizeRoute = async (req, res) => {
   try {
-    const { city, ward, area, date, truckId, constraints = {}, adjustments = {} } = req.body || {}
+    const {
+      city,
+      ward,
+      area,
+      date,
+      truckId,
+      constraints = {},
+      adjustments = {},
+      timeWindow = null,
+      confirm = false,
+    } = req.body || {}
     const serviceArea = city || ward
     if (!serviceArea) {
       return res.status(400).json({ error: 'city (or ward) is required' })
     }
 
+    const shouldSave = Boolean(confirm)
     const cityDoc = await City.findOne({ name: serviceArea }).lean()
     const depot = cityDoc?.depot || (lk.operations.city_depots && lk.operations.city_depots[serviceArea]) || lk.operations.default_depot
 
@@ -109,57 +120,73 @@ exports.optimizeRoute = async (req, res) => {
       threshold,
     }
 
-    const savedPlans = []
+    let planBlueprints = []
     plans.forEach((plan, index) => {
       const assignedTruck = index === 0 && truckId ? truckId : `TRUCK-${String(index + 1).padStart(2, '0')}`
-      savedPlans.push({ assignedTruck, plan })
+      planBlueprints.push({ assignedTruck, plan })
     })
 
-    const persisted = []
-    for (const entry of savedPlans) {
-      const payload = {
-        ward: serviceArea,
-        city: serviceArea,
-        area: area || null,
-        truckId: entry.assignedTruck,
-        date: planDayStart,
-        depot,
-        stops: (entry.plan.stops || []).map(stop => ({ ...stop, visited: Boolean(stop.visited) })),
-        loadKg: entry.plan.loadKg || 0,
-        distanceKm: entry.plan.distanceKm || 0,
-        summary: summaryBlock,
-      }
-
-      const doc = await RoutePlan.findOneAndUpdate(
-        {
-          city: serviceArea,
-          area: area || null,
-          truckId: entry.assignedTruck,
-          date: { $gte: planDayStart, $lte: planDayEnd },
-        },
-        { $set: payload },
-        { upsert: true, new: true, setDefaultsOnInsert: true }
-      )
-
-      persisted.push(doc ? doc.toObject() : payload)
+    if (!planBlueprints.length) {
+      planBlueprints = [{
+        assignedTruck: truckId || 'TRUCK-01',
+        plan: { stops: [], loadKg: 0, distanceKm: 0 },
+      }]
     }
 
-    const primaryPlan = persisted[0] || {
+    const decoratePlan = (entry, status) => ({
+      ward: serviceArea,
       city: serviceArea,
       area: area || null,
-      truckId: truckId || 'TRUCK-01',
-      stops: [],
-      loadKg: 0,
-      distanceKm: 0,
+      truckId: entry.assignedTruck,
+      date: planDayStart,
       depot,
+      timeWindow: timeWindow || null,
+      stops: (entry.plan.stops || []).map(stop => ({
+        binId: stop.binId,
+        lat: stop.lat,
+        lon: stop.lon,
+        estKg: stop.estKg,
+        visited: Boolean(stop.visited),
+      })),
+      loadKg: entry.plan.loadKg || 0,
+      distanceKm: entry.plan.distanceKm || 0,
+      status,
+      summary: summaryBlock,
+    })
+
+    if (shouldSave) {
+      const persisted = []
+      for (const entry of planBlueprints) {
+        const payload = decoratePlan(entry, 'confirmed')
+        const doc = await RoutePlan.findOneAndUpdate(
+          {
+            city: serviceArea,
+            area: area || null,
+            truckId: entry.assignedTruck,
+            timeWindow: timeWindow || null,
+            date: { $gte: planDayStart, $lte: planDayEnd },
+          },
+          { $set: payload },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        )
+
+        persisted.push(doc ? doc.toObject() : payload)
+      }
+
+      const primaryPlan = persisted[0] || decoratePlan(planBlueprints[0], 'confirmed')
+
+      return res.json({
+        ...primaryPlan,
+        summary: primaryPlan.summary || summaryBlock,
+      })
     }
 
-    const response = {
-      ...primaryPlan,
-      summary: primaryPlan.summary || summaryBlock,
-    }
+    const draftPlan = decoratePlan(planBlueprints[0], 'draft')
 
-    return res.json(response)
+    return res.json({
+      ...draftPlan,
+      summary: draftPlan.summary || summaryBlock,
+    })
   } catch (error) {
     console.error('optimizeRoute error', error)
     return res.status(500).json({ error: 'Unable to optimize route' })

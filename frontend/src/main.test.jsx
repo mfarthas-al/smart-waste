@@ -9,6 +9,14 @@ vi.mock('react-dom/client', () => ({
   },
 }))
 
+vi.mock('react-router-dom', () => ({
+  BrowserRouter: ({ children }) => children,
+}))
+
+vi.mock('./App.jsx', () => ({
+  default: () => null,
+}))
+
 vi.mock('@mui/x-date-pickers/LocalizationProvider', () => ({
   LocalizationProvider: ({ children }) => children,
 }))

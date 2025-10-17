@@ -4,6 +4,7 @@ const stop = new Schema({
 }, { _id: false });
 const schema = new Schema({
   date: { type: Date, index: true },
+  timeWindow: { type: String, index: true, default: null },
   ward: String,
   city: { type: String, index: true },
   area: { type: String, index: true },
@@ -12,6 +13,7 @@ const schema = new Schema({
   stops: [stop],
   loadKg: Number,
   distanceKm: Number,
+  status: { type: String, enum: ['draft', 'confirmed'], default: 'confirmed' },
   summary: {
     totalBins: Number,
     consideredBins: Number,
@@ -23,5 +25,6 @@ const schema = new Schema({
 }, { timestamps: true });
 
 schema.index({ city: 1, truckId: 1, date: 1 })
+schema.index({ city: 1, timeWindow: 1, date: 1 })
 
 module.exports = model('RoutePlan', schema);

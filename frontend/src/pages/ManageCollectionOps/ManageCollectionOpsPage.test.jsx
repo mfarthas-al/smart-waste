@@ -83,6 +83,7 @@ describe('ManageCollectionOpsPage', () => {
     truckId: 'TRUCK-99',
     loadKg: 1800,
     distanceKm: 26.4,
+    timeWindow: '06:00-10:00',
     summary: {
       threshold: 0.58,
       consideredBins: 48,
@@ -120,8 +121,7 @@ describe('ManageCollectionOpsPage', () => {
 
   beforeEach(() => {
     optimizeShouldFail = false
-
-  fetchMock = vi.fn(async (input) => {
+    fetchMock = vi.fn(async (input) => {
       const url = typeof input === 'string' ? input : input.url
 
       if (url.endsWith('/api/ops/cities')) {
@@ -177,6 +177,23 @@ describe('ManageCollectionOpsPage', () => {
 
     await screen.findByText('Truck default: TRUCK-99')
     await screen.findByText(/Approx\. 490 kg/) // high waste area aggregate rounding
+
+    const confirmButton = await screen.findByRole('button', { name: /Confirm route/i })
+    await userEvent.click(confirmButton)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Confirm route/i })).not.toBeInTheDocument()
+    })
+
+    const optimizeCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/api/ops/routes/optimize'))
+    expect(optimizeCalls.length).toBeGreaterThanOrEqual(2)
+    const optimizePayloads = optimizeCalls
+      .map(([, options]) => options?.body)
+      .filter(Boolean)
+      .map(body => JSON.parse(body))
+
+    expect(optimizePayloads[0]).toMatchObject({ city: 'Colombo', timeWindow: '06:00-10:00' })
+    expect(optimizePayloads.at(-1)).toMatchObject({ confirm: true, timeWindow: '06:00-10:00' })
 
     exportButton = await screen.findByRole('button', { name: /Export report/i })
     await waitFor(() => {

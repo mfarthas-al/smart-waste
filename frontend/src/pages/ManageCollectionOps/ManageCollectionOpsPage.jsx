@@ -43,6 +43,12 @@ const PROGRESS_TEMPLATE = [
   { label: 'Finalizing dispatch plan', status: 'idle' },
 ]
 
+const SERVICE_WINDOWS = [
+  '06:00-10:00',
+  '10:00-14:00',
+  '14:00-18:00',
+]
+
 const FUEL_BURN_RATE_L_PER_KM = 0.32 // Approximate diesel burn for medium waste truck
 const HIGH_PRIORITY_RATIO = 0.4
 
@@ -83,8 +89,33 @@ export default function ManageCollectionOpsPage() {
   const [liveSync, setLiveSync] = useState(false)
   const [pendingBin, setPendingBin] = useState('')
   const [collectorBanner, setCollectorBanner] = useState(null)
+  const [timeWindow, setTimeWindow] = useState(SERVICE_WINDOWS[0])
+  const [needsConfirmation, setNeedsConfirmation] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   const selectedCity = useMemo(() => cities.find(entry => entry.name === city), [cities, city])
+
+  const normalizePlan = useCallback((data) => {
+    if (!data) {
+      return null
+    }
+
+    const normalized = {
+      ...data,
+      depot: data.depot || selectedCity?.depot || null,
+      summary: data.summary || {},
+    }
+
+    const totalStops = Array.isArray(normalized.stops) ? normalized.stops.length : 0
+    const completedCount = Array.isArray(normalized.stops) ? normalized.stops.filter(stop => stop.visited).length : 0
+    normalized.summary = {
+      ...normalized.summary,
+      completedStops: completedCount,
+      pendingStops: Math.max(totalStops - completedCount, 0),
+    }
+
+    return normalized
+  }, [selectedCity])
 
   const loadSummary = useCallback(async ({ signal } = {}) => {
     try {
@@ -150,6 +181,7 @@ export default function ManageCollectionOpsPage() {
         setPlan(null)
         setDirections(null)
         setLastOptimizedAt(null)
+        setNeedsConfirmation(false)
         return
       }
 
@@ -162,21 +194,14 @@ export default function ManageCollectionOpsPage() {
         return
       }
 
-      const normalized = {
-        ...data,
-        depot: data.depot || selectedCity?.depot || null,
-        summary: data.summary || {},
-      }
-
-      const totalStops = Array.isArray(normalized.stops) ? normalized.stops.length : 0
-      const completedCount = Array.isArray(normalized.stops) ? normalized.stops.filter(stop => stop.visited).length : 0
-      normalized.summary = {
-        ...normalized.summary,
-        completedStops: completedCount,
-        pendingStops: Math.max(totalStops - completedCount, 0),
-      }
+      const normalized = normalizePlan(data)
 
       setPlan(normalized)
+      setNeedsConfirmation(false)
+
+      if (typeof data.timeWindow === 'string' && data.timeWindow) {
+        setTimeWindow(data.timeWindow)
+      }
 
       if (data.updatedAt) {
         const updated = new Date(data.updatedAt)
@@ -203,10 +228,11 @@ export default function ManageCollectionOpsPage() {
         return
       }
       console.error('loadPlan error', err)
+      setNeedsConfirmation(false)
     } finally {
       setPlanFetching(false)
     }
-  }, [city, selectedCity, fetchDirections])
+  }, [city, fetchDirections, normalizePlan])
 
   useEffect(() => {
     let ignore = false
@@ -275,6 +301,8 @@ export default function ManageCollectionOpsPage() {
     setLastOptimizedAt(null)
     setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step })))
     setLiveSync(false)
+    setNeedsConfirmation(false)
+    setConfirming(false)
   }, [city])
 
   useEffect(() => {
@@ -331,12 +359,13 @@ export default function ManageCollectionOpsPage() {
     if (!city) return
     setLoading(true)
     setError('')
+    setNeedsConfirmation(false)
     setProgressSteps(PROGRESS_TEMPLATE.map((step, index) => ({ ...step, status: index === 0 ? 'active' : 'idle' })))
     try {
       const res = await fetch('/api/ops/routes/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ city }),
+        body: JSON.stringify({ city, timeWindow }),
       })
 
       if (!res.ok) {
@@ -344,18 +373,7 @@ export default function ManageCollectionOpsPage() {
       }
 
       const data = await res.json()
-      const normalized = {
-        ...data,
-        depot: data.depot || selectedCity?.depot || null,
-        summary: data.summary || {},
-      }
-      const totalStops = Array.isArray(normalized.stops) ? normalized.stops.length : 0
-      const completedCount = Array.isArray(normalized.stops) ? normalized.stops.filter(stop => stop.visited).length : 0
-      normalized.summary = {
-        ...normalized.summary,
-        completedStops: completedCount,
-        pendingStops: Math.max(totalStops - completedCount, 0),
-      }
+      const normalized = normalizePlan(data)
       setPlan(normalized)
       setLastOptimizedAt(new Date())
       setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step, status: 'done' })))
@@ -372,18 +390,77 @@ export default function ManageCollectionOpsPage() {
       }
 
       await loadSummary()
-      setLiveSync(true)
+      setNeedsConfirmation(true)
+      setLiveSync(false)
     } catch (err) {
       console.error('optimize error', err)
       setError('Could not optimize right now. Please try again in a moment.')
       setProgressSteps(PROGRESS_TEMPLATE.map(step => ({ ...step })))
+      setNeedsConfirmation(false)
     } finally {
       setLoading(false)
     }
   }
 
+  const confirmPlan = useCallback(async () => {
+    if (!plan) return
+
+    setConfirming(true)
+    setError('')
+    try {
+      const res = await fetch('/api/ops/routes/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ city, timeWindow, truckId: plan.truckId, confirm: true }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`Confirm failed with status ${res.status}`)
+      }
+
+      const data = await res.json()
+      const normalized = normalizePlan(data)
+      setPlan(normalized)
+      setNeedsConfirmation(false)
+
+      if (data.updatedAt) {
+        const updated = new Date(data.updatedAt)
+        if (!Number.isNaN(updated.getTime())) {
+          setLastOptimizedAt(updated)
+        }
+      }
+
+      if (typeof data.timeWindow === 'string' && data.timeWindow) {
+        setTimeWindow(data.timeWindow)
+      }
+
+      if (normalized?.truckId) {
+        const directionData = await fetchDirections(normalized.truckId)
+        if (directionData) {
+          setDirections({ ...directionData, truckId: normalized.truckId })
+        } else {
+          setDirections(null)
+        }
+      } else {
+        setDirections(null)
+      }
+
+      await loadSummary()
+      setLiveSync(true)
+    } catch (err) {
+      console.error('confirmPlan error', err)
+      setError('Could not confirm the plan. Please retry.')
+    } finally {
+      setConfirming(false)
+    }
+  }, [plan, city, timeWindow, normalizePlan, fetchDirections, loadSummary])
+
   const markCollected = useCallback(async binId => {
     if (!binId) return
+    if (needsConfirmation) {
+      setCollectorBanner({ tone: 'error', message: 'Confirm the latest route before recording collections.' })
+      return
+    }
     if (!plan?.truckId) {
       setCollectorBanner({ tone: 'error', message: 'No truck assignment found. Generate a plan before recording collections.' })
       return
@@ -425,7 +502,7 @@ export default function ManageCollectionOpsPage() {
     } finally {
       setPendingBin('')
     }
-  }, [plan?.truckId, loadPlan, city, loadSummary])
+  }, [plan?.truckId, loadPlan, city, loadSummary, needsConfirmation])
 
   const loadProgress = plan && capacityLimit > 0
     ? Math.min(100, Math.round(((plan.loadKg ?? 0) / capacityLimit) * 100))
@@ -615,7 +692,7 @@ export default function ManageCollectionOpsPage() {
               onClick={handleExportReport}
               variant="contained"
               startIcon={<FileDown className="h-4 w-4" />}
-              disabled={!plan}
+              disabled={!plan || needsConfirmation}
               sx={{ borderRadius: '999px', textTransform: 'none', fontWeight: 600, paddingInline: '1.35rem' }}
             >
               Export report
@@ -637,6 +714,9 @@ export default function ManageCollectionOpsPage() {
               selectedCity={city}
               zoneDetails={zoneDetails}
               onSelectCity={setCity}
+              timeWindow={timeWindow}
+              onSelectTimeWindow={setTimeWindow}
+              availableWindows={SERVICE_WINDOWS}
               onGenerate={optimize}
               loading={loading}
               actionLabel="Generate Optimized Route"
@@ -647,6 +727,27 @@ export default function ManageCollectionOpsPage() {
             )}
 
             {loading && <ProgressSteps steps={progressSteps} />}
+
+            {needsConfirmation && (
+              <Alert
+                severity="info"
+                variant="outlined"
+                action={(
+                  <Button
+                    onClick={confirmPlan}
+                    disabled={confirming}
+                    variant="contained"
+                    color="success"
+                    size="small"
+                    sx={{ borderRadius: '999px', textTransform: 'none' }}
+                  >
+                    {confirming ? 'Confirming…' : 'Confirm route'}
+                  </Button>
+                )}
+              >
+                Review the optimized route and confirm it before dispatching crews.
+              </Alert>
+            )}
 
             {cities.length > 0 && (
               <MiniZoneMap cities={cities} selectedCity={city} onSelectCity={setCity} />

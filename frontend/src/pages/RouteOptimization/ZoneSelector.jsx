@@ -5,6 +5,9 @@ export default function ZoneSelector({
   selectedCity,
   zoneDetails,
   onSelectCity,
+  timeWindow = '',
+  onSelectTimeWindow = () => {},
+  availableWindows = [],
   onGenerate,
   loading,
   actionLabel = 'Generate Optimized Route',
@@ -26,6 +29,23 @@ export default function ZoneSelector({
             ))}
           </Select>
         </div>
+
+        {availableWindows.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Service window</p>
+            <Select
+              fullWidth
+              value={timeWindow}
+              onChange={event => onSelectTimeWindow(event.target.value)}
+              size="small"
+              sx={{ mt: 1, borderRadius: '999px' }}
+            >
+              {availableWindows.map(window => (
+                <MenuItem key={window} value={window}>{window}</MenuItem>
+              ))}
+            </Select>
+          </div>
+        )}
 
         <div className="grid gap-3 rounded-xl border border-slate-200/70 bg-slate-50/60 p-4 text-sm text-slate-600">
           <div className="flex items-center justify-between">

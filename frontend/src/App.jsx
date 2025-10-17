@@ -489,7 +489,14 @@ export default function App() {
         <main className="pb-16 pt-6">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/ops" element={<ManageCollectionOpsPage />} />
+            <Route
+              path="/ops"
+              element={
+                sessionUser?.role === 'admin'
+                  ? <ManageCollectionOpsPage session={sessionUser} />
+                  : <Navigate to={sessionUser ? '/userDashboard' : '/login'} replace />
+              }
+            />
             <Route path="/collector" element={<Navigate to="/ops#collector-checklist" replace />} />
             <Route
               path="/schedule"
