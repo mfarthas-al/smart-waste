@@ -4,6 +4,7 @@ const RoutePlan = require('../../models/RoutePlan')
 const CollectionEvent = require('../../models/CollectionEvent')
 const lk = require('../../config/region.lk.json')
 const { estimateKg, optimize } = require('./service.routing')
+const HIGH_PRIORITY_RATIO = 0.25
 
 const startOfDay = date => {
   const d = new Date(date)
@@ -17,6 +18,11 @@ const endOfDay = date => {
   return d
 }
 
+/**
+ * Derive the bin fill threshold used for route optimisation, applying operator adjustments.
+ * @param {{ skipBelow30?: boolean, emergencyOnly?: boolean, prioritizeCommercial?: boolean }} [adjustments]
+ * @returns {number} A ratio between 0 and 0.9 representing the minimum fill level.
+ */
 const computeThreshold = adjustments => {
   const base = Number(lk.operations.route_threshold ?? 0.2)
   let threshold = base
@@ -31,6 +37,8 @@ const computeThreshold = adjustments => {
   }
   return Math.min(0.9, threshold)
 }
+
+const DEFAULT_FLEET = ['TRUCK-01', 'TRUCK-02', 'TRUCK-03', 'TRUCK-04']
 
 exports.listCities = async (_req, res) => {
   const cities = await City.find().select('name code depot bbox areaSqKm population lastCollectionAt -_id').lean()
@@ -74,7 +82,7 @@ exports.optimizeRoute = async (req, res) => {
       return { ...bin, estKg, ratio }
     })
     const consideredBins = enriched.filter(b => b.ratio >= threshold)
-    const highPriorityBins = enriched.filter(b => b.ratio >= 0.6)
+    const highPriorityBins = enriched.filter(b => b.ratio >= HIGH_PRIORITY_RATIO)
 
     const plans = optimize({
       bins,
@@ -91,6 +99,15 @@ exports.optimizeRoute = async (req, res) => {
     const planDate = date ? new Date(date) : new Date()
     const planDayStart = startOfDay(planDate)
     const planDayEnd = endOfDay(planDate)
+
+    const summaryBlock = {
+      totalBins,
+      consideredBins: consideredBins.length,
+      highPriorityBins: highPriorityBins.length,
+      truckCapacityKg,
+      trucks,
+      threshold,
+    }
 
     const savedPlans = []
     plans.forEach((plan, index) => {
@@ -110,6 +127,7 @@ exports.optimizeRoute = async (req, res) => {
         stops: (entry.plan.stops || []).map(stop => ({ ...stop, visited: Boolean(stop.visited) })),
         loadKg: entry.plan.loadKg || 0,
         distanceKm: entry.plan.distanceKm || 0,
+        summary: summaryBlock,
       }
 
       const doc = await RoutePlan.findOneAndUpdate(
@@ -138,20 +156,123 @@ exports.optimizeRoute = async (req, res) => {
 
     const response = {
       ...primaryPlan,
-      summary: {
-        totalBins,
-        consideredBins: consideredBins.length,
-        highPriorityBins: highPriorityBins.length,
-        truckCapacityKg,
-        trucks,
-        threshold,
-      },
+      summary: primaryPlan.summary || summaryBlock,
     }
 
     return res.json(response)
   } catch (error) {
     console.error('optimizeRoute error', error)
     return res.status(500).json({ error: 'Unable to optimize route' })
+  }
+}
+
+exports.getPlanByCity = async (req, res) => {
+  try {
+    const { city } = req.query
+    if (!city) {
+      return res.status(400).json({ error: 'city is required' })
+    }
+
+    const plan = await RoutePlan.findOne({ city })
+      .sort({ updatedAt: -1 })
+      .lean()
+
+    if (!plan) {
+      return res.status(404).json({ error: 'No plan available' })
+    }
+
+    const depot = plan.depot || (lk.operations.city_depots && lk.operations.city_depots[plan.ward]) || lk.operations.default_depot
+
+    const summarySource = plan.summary || {}
+    const binsInCity = await WasteBin.find({ city })
+      .select('binId capacityKg lastPickupAt estRateKgPerDay')
+      .lean()
+
+    const derivedTotalBins = typeof summarySource.totalBins === 'number'
+      ? summarySource.totalBins
+      : binsInCity.length
+
+    const appliedThreshold = summarySource.threshold ?? Number(lk.operations.route_threshold ?? 0.2)
+    const enriched = binsInCity
+      .map(bin => {
+        const capacity = Number(bin.capacityKg) || 0
+        if (capacity <= 0) {
+          return null
+        }
+        const estimated = estimateKg(bin)
+        return {
+          ratio: estimated / capacity,
+        }
+      })
+      .filter(Boolean)
+
+    const consideredBins = enriched.filter(entry => entry.ratio >= appliedThreshold).length
+      const highPriorityBins = enriched.filter(entry => entry.ratio >= HIGH_PRIORITY_RATIO).length
+
+    const summary = {
+      totalBins: derivedTotalBins,
+      consideredBins: consideredBins ?? (plan.stops?.length || 0),
+      highPriorityBins: highPriorityBins ?? 0,
+      truckCapacityKg: summarySource.truckCapacityKg ?? Number(lk.operations.truck_capacity_kg || 3000),
+      trucks: summarySource.trucks ?? 1,
+      threshold: appliedThreshold,
+    }
+
+    return res.json({
+      ...plan,
+      depot,
+      summary,
+    })
+  } catch (error) {
+    console.error('getPlanByCity error', error)
+    return res.status(500).json({ error: 'Unable to load plan for city' })
+  }
+}
+
+exports.getOpsSummary = async (_req, res) => {
+  try {
+    const now = new Date()
+    const [cities, totalBins, todaysPlans] = await Promise.all([
+      City.find().select('name lastCollectionAt').lean(),
+      WasteBin.countDocuments().exec(),
+      RoutePlan.find({
+        date: { $gte: startOfDay(now), $lte: endOfDay(now) },
+      })
+        .select('truckId -_id')
+        .lean(),
+    ])
+
+    const activeWindowMs = 7 * 24 * 60 * 60 * 1000
+    const activeZones = cities.filter(city => {
+      if (!city.lastCollectionAt) return false
+      const ts = new Date(city.lastCollectionAt).getTime()
+      if (Number.isNaN(ts)) return false
+      return now.getTime() - ts <= activeWindowMs
+    }).length
+
+    const fleet = Array.isArray(lk.operations?.fleet_trucks) && lk.operations.fleet_trucks.length
+      ? lk.operations.fleet_trucks
+      : DEFAULT_FLEET
+
+    const engaged = new Set(
+      (todaysPlans || [])
+        .map(plan => plan.truckId)
+        .filter(Boolean)
+    )
+
+    const availableTrucks = Math.max(fleet.length - engaged.size, 0)
+
+    res.json({
+      activeZones: activeZones || cities.length,
+      totalZones: cities.length,
+      availableTrucks,
+      engagedTrucks: engaged.size,
+      fleetSize: fleet.length,
+      totalBins,
+    })
+  } catch (error) {
+    console.error('getOpsSummary error', error)
+    res.status(500).json({ error: 'Unable to load operations summary' })
   }
 }
 
@@ -205,7 +326,7 @@ exports.recordCollection = async (req, res) => {
     }
 
     await Promise.all([
-      RoutePlan.updateOne(filter, { $set: { 'stops.$.visited': true } }).exec(),
+      RoutePlan.updateOne(filter, { $set: { 'stops.$.visited': true } }, { timestamps: true }).exec(),
       WasteBin.updateOne({ binId }, { $set: { lastPickupAt: now } }).exec(),
     ])
 

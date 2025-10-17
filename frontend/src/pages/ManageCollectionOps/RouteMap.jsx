@@ -11,7 +11,8 @@ function numberIcon(n, color = '#10b981') {
       <div style="
         width:28px;height:28px;border-radius:9999px;
         display:grid;place-items:center;
-        background:${color}1A;border:1px solid ${color}66;color:#0f172a;
+        background:${color};border:1px solid ${color};color:#ffffff;
+        box-shadow:0 6px 12px rgba(15,23,42,0.2);
         font:600 12px/1 Inter,system-ui,sans-serif;">
         ${n}
       </div>`,
@@ -53,7 +54,12 @@ const DEFAULT_DEPOT = { lat: 6.927, lon: 79.861 };
 
 export default function RouteMap({ plan, depot }) {
   const baseDepot = depot || plan?.depot || DEFAULT_DEPOT;
-  const stops = plan?.stops ?? [];
+  const stops = useMemo(() => {
+    if (!Array.isArray(plan?.stops)) {
+      return [];
+    }
+    return plan.stops;
+  }, [plan]);
   const poly = useMemo(() => {
     if (!stops.length) {
       return [[baseDepot.lat, baseDepot.lon]];
@@ -75,7 +81,7 @@ export default function RouteMap({ plan, depot }) {
 
         {/* Path depot → stops → depot */}
         {stops.length >= 1 && (
-          <Polyline positions={poly} pathOptions={{ color: '#10b981', weight: 5, opacity: 0.8 }} />
+          <Polyline positions={poly} pathOptions={{ color: '#0f172a', weight: 4, opacity: 0.85, dashArray: '8 6' }} />
         )}
 
         {/* Depot */}
@@ -84,11 +90,11 @@ export default function RouteMap({ plan, depot }) {
         </Marker>
 
         {/* Numbered stop markers */}
-        {stops.map((s, i) => (
+              {stops.map((s, i) => (
           <Marker
             key={s.binId}
             position={[s.lat, s.lon]}
-            icon={numberIcon(i + 1, s.visited ? '#16a34a' : '#10b981')}
+                    icon={numberIcon(i + 1, s.visited ? '#22c55e' : '#ef4444')}
           >
             <Popup>
               <div style={{ fontWeight: 600 }}>{s.binId}</div>
