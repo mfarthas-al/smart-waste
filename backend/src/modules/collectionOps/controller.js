@@ -77,6 +77,11 @@ const optimizeRouteSchema = z.object({
     avoidPeak: z.boolean().optional(),
   }).optional(),
 }).passthrough();
+const planByCityQuerySchema = z.object({
+  city: z.string().min(1),
+  area: z.string().min(1).optional(),
+  date: z.union([z.string(), z.date()]).optional(),
+});
 
 const todayRouteParamsSchema = z.object({ truckId: z.string().min(1) });
 const recordCollectionSchema = z.object({
@@ -105,6 +110,90 @@ exports.listBinsByCity = async (req, res) => {
     .select('binId city area location capacityKg lastPickupAt estRateKgPerDay -_id')
     .lean();
   return res.json(bins);
+};
+
+// Fetches the most recent optimized plan for a city (optionally scoped by area).
+exports.getPlanByCity = async (req, res) => {
+  const parsedQuery = parseOrRespond(planByCityQuerySchema, req.query || {}, res);
+  if (!parsedQuery) {
+    return undefined;
+  }
+
+  try {
+    const { city, area, date } = parsedQuery;
+    const filters = { city };
+    if (area) {
+      filters.area = area;
+    }
+
+    if (date) {
+      const targetDate = new Date(date);
+      if (Number.isNaN(targetDate.getTime())) {
+        return respondWithError(res, 400, 'date must be a valid ISO string');
+      }
+      filters.date = { $gte: startOfDay(targetDate), $lte: endOfDay(targetDate) };
+    }
+
+    const plan = await RoutePlan
+      .findOne(filters)
+      .sort({ date: -1, updatedAt: -1 })
+      .lean();
+
+    if (!plan) {
+      return res.status(404).json({ error: 'No plan available for the requested city' });
+    }
+
+    const stops = Array.isArray(plan.stops) ? plan.stops : [];
+    const completedStops = stops.filter(stop => stop?.visited).length;
+    const pendingStops = Math.max(stops.length - completedStops, 0);
+
+    return res.json({
+      ...plan,
+      summary: {
+        ...(plan.summary || {}),
+        completedStops,
+        pendingStops,
+        totalStops: stops.length,
+      },
+    });
+  } catch (error) {
+    console.error('getPlanByCity error', error);
+    return respondWithError(res, 500, 'Unable to load plan');
+  }
+};
+
+// Provides headline operational metrics for the command dashboard.
+exports.getOpsSummary = async (_req, res) => {
+  try {
+    const now = new Date();
+    const dayStart = startOfDay(now);
+    const dayEnd = endOfDay(now);
+
+    const [totalBins, totalZones, engagedTruckIds, activeCities] = await Promise.all([
+      WasteBin.countDocuments().exec(),
+      City.countDocuments().exec(),
+      RoutePlan.distinct('truckId', { date: { $gte: dayStart, $lte: dayEnd } }),
+      RoutePlan.distinct('city', { date: { $gte: dayStart, $lte: dayEnd } }),
+    ]);
+
+    const engagedTrucks = engagedTruckIds.filter(Boolean).length;
+    const activeZones = activeCities.filter(Boolean).length;
+    const fleetTrucks = Array.isArray(lk.operations?.fleet_trucks) ? lk.operations.fleet_trucks : [];
+    const fleetSize = fleetTrucks.length || engagedTrucks;
+    const availableTrucks = Math.max(fleetSize - engagedTrucks, 0);
+
+    return res.json({
+      activeZones,
+      totalZones,
+      availableTrucks,
+      fleetSize,
+      engagedTrucks,
+      totalBins,
+    });
+  } catch (error) {
+    console.error('getOpsSummary error', error);
+    return respondWithError(res, 500, 'Unable to load summary');
+  }
 };
 
 // Runs the optimisation routine and persists the resulting plan for the day.

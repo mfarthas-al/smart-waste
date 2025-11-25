@@ -228,14 +228,24 @@ export default function SpecialCollectionPaymentSuccessCard({
                         disabled={downloadPending}
                         startIcon={<Download size={16} />}
                         sx={{
-                          textDecoration: 'underline',
-                          px: 0,
+                          textDecoration: 'none',
                           justifyContent: 'flex-start',
                           fontWeight: 600,
-                          color: 'success.main',
+                          color: 'success.dark',
+                          bgcolor: 'success.100',
+                          borderRadius: 2,
+                          px: 1.5,
+                          py: 0.75,
+                          boxShadow: 'inset 0 0 0 1px rgba(9, 121, 105, 0.08)',
                           '&:hover': {
+                            color: 'common.white',
+                            bgcolor: 'success.main',
+                            boxShadow: 'inset 0 0 0 1px rgba(9, 121, 105, 0.25)',
+                          },
+                          '&.Mui-disabled': {
+                            bgcolor: 'success.50',
                             color: 'success.dark',
-                            bgcolor: 'transparent',
+                            boxShadow: 'none',
                           },
                         }}
                       >

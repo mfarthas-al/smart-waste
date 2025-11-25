@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, CardContent, Chip, Divider, LinearProgress } from '@mui/material'
-import { Loader2, MapPinned, Share2, FileDown, ShieldCheck, Gauge, Timer, Route as RouteIcon, Truck } from 'lucide-react'
+import { Alert, Button, Card, CardContent, Chip, LinearProgress } from '@mui/material'
+import { AlertTriangle, CheckCircle2, Flame, Loader2, MapPin, MapPinned, FileDown, ShieldCheck, Gauge, Timer, Route as RouteIcon, Truck } from 'lucide-react'
 import RouteMap from './RouteMap.jsx'
 import ZoneSelector from '../RouteOptimization/ZoneSelector.jsx'
 import MiniZoneMap from '../RouteOptimization/MiniZoneMap.jsx'
 import KpiCard from '../RouteOptimization/KpiCard.jsx'
 import SummaryCard from '../RouteOptimization/SummaryCard.jsx'
 import ProgressSteps from '../RouteOptimization/ProgressSteps.jsx'
+import { buildCollectionOpsReport, formatDuration } from './reporting.js'
 
 // Offline-friendly fallback cities used when the API catalogue is unavailable.
 const FALLBACK_CITIES = [
@@ -45,11 +46,21 @@ const PROGRESS_TEMPLATE = [
 ]
 
 const INITIAL_ZONE_DETAILS = Object.freeze({ totalBins: '—', areaSize: '—', population: '—', lastCollection: '—' })
+const INITIAL_SUMMARY_METRICS = Object.freeze({
+  activeZones: null,
+  totalZones: null,
+  availableTrucks: null,
+  fleetSize: null,
+  engagedTrucks: null,
+  totalBins: null,
+})
 const DEFAULT_CAPACITY = 3000
 const OPTIMIZE_ENDPOINT = '/api/ops/routes/optimize'
 const CITIES_ENDPOINT = '/api/ops/cities'
 const BINS_ENDPOINT = '/api/ops/bins'
 const DIRECTIONS_ENDPOINT = '/api/ops/routes'
+const FUEL_BURN_RATE_L_PER_KM = 0.4
+const HIGH_PRIORITY_RATIO = 0.4
 
 // Produce a progress step array with updated status values for the UI timeline.
 const createProgressState = (activeIndex = -1, status = 'idle') => PROGRESS_TEMPLATE.map((step, index) => {
@@ -91,6 +102,8 @@ export default function ManageCollectionOpsPage() {
   const [liveSync, setLiveSync] = useState(false)
   const [pendingBin, setPendingBin] = useState('')
   const [collectorBanner, setCollectorBanner] = useState(null)
+  const [summaryMetrics, setSummaryMetrics] = useState(INITIAL_SUMMARY_METRICS)
+  const [planFetching, setPlanFetching] = useState(false)
 
   const selectedCity = useMemo(() => cities.find(entry => entry.name === city), [cities, city])
 

@@ -13,6 +13,9 @@ const getFetch = async () => {
 const respondWithError = (res, status, message) => res.status(status).json({ error: message });
 
 const toOSRMCoords = coords => coords.map(([lat, lon]) => `${lon},${lat}`).join(';');
+const isValidCoord = coord => Array.isArray(coord)
+  && coord.length === 2
+  && coord.every(value => typeof value === 'number' && Number.isFinite(value));
 
 const paramsSchema = z.object({ truckId: z.string().min(1) });
 
